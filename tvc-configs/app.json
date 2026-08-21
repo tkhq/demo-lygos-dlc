@@ -1,5 +1,19 @@
 {
   "name": "lygos-dlc-demo",
-  "enableEgress": true,
-  "dangerousEnableDebugModeDeployments": true
+  "quorumPublicKey": "04451028fc9d42cef6d8f2a3ebe17d65783c470dbc6f04663d500c12009930cf9b209e733f6ac6103cc28f07ecde2dbb55095738b828d6b7a55caf4ddf9d67f2ae047827dcd2325b8d58694c2ea14e8f1e1f8a36c84438d291ff9b1b067debdb3e2ba3822984cde8bed4de2c237bd323526da4961d368bcc63cbd2d37d00e936683e",
+  "externalConnectivity": true,
+  "manifestSetId": null,
+  "manifestSetParams": {
+    "name": "lygos-dlc-demo-operators",
+    "threshold": 1,
+    "newOperators": [
+      {
+        "name": "connor",
+        "publicKey": "04a22397b7240c3ecd559a64024f9d14a95ac458377c2213366fa2ae97531a1c7af7815aab9c7f119c5e12842f367c92870f01117d5b37de23ac493c54221397d70424957762da484027dee466af2d659528b4e0757c315e934a9fe854e16acb356fa589485ad630474ab0d4293273d6e902e1690aa8f7ceb1a55291b17be4a7722c"
+      }
+    ],
+    "existingOperatorIds": []
+  },
+  "shareSetId": null,
+  "shareSetParams": null
 }

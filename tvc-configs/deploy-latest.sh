@@ -8,7 +8,7 @@ set -euo pipefail
 
 REPO="${REPO:-tkhq/lygos-dlc-demo}"
 CONFIG="${CONFIG:-$(dirname "$0")/deploy.json}"
-OPERATOR_ID="${OPERATOR_ID:?set OPERATOR_ID}"
+OPERATOR_ID="${OPERATOR_ID:?set OPERATOR_ID (see README.md in this directory)}"
 
 run_id=$(gh run list -R "$REPO" -w stagex -L 1 --json databaseId -q '.[0].databaseId')
 echo "watching stagex run $run_id"

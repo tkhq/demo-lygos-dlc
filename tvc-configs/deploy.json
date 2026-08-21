@@ -1,12 +1,17 @@
 {
-  "appId": "REPLACE_WITH_APP_ID",
+  "appId": "b7e80e58-21b9-4480-8ba1-860bef4a016f",
   "qosVersion": "0.12.1",
   "pivotContainerImageUrl": "REPLACE_EACH_PASS_FROM_CI",
   "pivotPath": "/tvc_app",
-  "pivotArgs": ["--host", "0.0.0.0", "--port", "3000"],
+  "pivotArgs": [
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "3000"
+  ],
   "expectedPivotDigest": "REPLACE_EACH_PASS_FROM_CI",
+  "debugMode": true,
   "healthCheckType": "TVC_HEALTH_CHECK_TYPE_HTTP",
   "healthCheckPort": 3000,
-  "publicIngressPort": 3000,
-  "dangerousDeployDebugMode": true
+  "publicIngressPort": 3000
 }
