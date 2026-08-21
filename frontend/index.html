@@ -134,7 +134,7 @@
 <div class="hero">
   <div class="overline">Turnkey Verifiable Cloud / Lygos</div>
   <h1>Verifying a Bitcoin loan inside an enclave</h1>
-  <p>A Rust app in a <strong>Turnkey Verifiable Cloud</strong> enclave decodes a Lygos DLC, checks every signature, confirms the contract encodes <strong>the terms you agreed to</strong>, and — where it matters — proves the collateral is locked on Bitcoin. It signs the verdict with a key sealed to the approved binary.</p>
+  <p>A Rust app in a <strong>Turnkey Verifiable Cloud</strong> enclave decodes a Lygos DLC, checks every signature, confirms the contract encodes <strong>the terms you agreed to</strong>, and — where it matters — proves the collateral is locked on Bitcoin. It signs the verdict with the enclave's own key.</p>
 </div>
 
 <div class="wrap">
@@ -444,10 +444,11 @@ async function render(data, request, mutate) {
     ${kv('Signature over this verdict', proofText, proofOk ? 'ok' : (proofOk === false ? 'bad' : ''))}
     ${kv('Terms digest', data.termsDigest, 'hl')}
     ${kv('Enclave public key', (data.proof||{}).publicKey)}
-    <div class="callout"><strong>What the signature proves:</strong> the enclave signed the exact bytes below with a key generated inside the enclave at boot and sealed, by the Nitro attestation, to the specific approved binary. ${
+    <div class="callout"><strong>What the signature proves:</strong> the holder of the key below produced this exact verdict, and nothing altered it afterwards. ${
       profile === 'morpho_midnight'
         ? 'The <code>termsDigest</code> lets the Midnight contracts bind minting to exactly the terms verified here, instead of re-deriving them and hoping they agree.'
-        : 'A valid signature means this report came from the reviewed code, not from a server that could have been tampered with.'}</div>
+        : 'Any change to the verdict breaks the signature.'}</div>
+    <div class="callout warn"><strong>What it does not prove:</strong> that this key belongs to an enclave running this reviewed code. That step pairs this <em>app proof</em> with a <em>boot proof</em> — the attestation document binding the key to the enclave's measurements — and is <strong>not implemented in this demo</strong>. Read the check above as signature integrity, not as attestation.</div>
   `;
 
   const contract = `

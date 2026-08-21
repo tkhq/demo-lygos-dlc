@@ -2,7 +2,7 @@
 
 A Rust service that runs inside a [Turnkey Verifiable Cloud](https://docs.turnkey.com) enclave and answers one question about a Lygos loan: **is this contract sound, and is its collateral actually locked on Bitcoin?**
 
-It verifies the contract the way Lygos's own [`dlc-verify`](https://github.com/LygosLabs/dlc-verify) does — message structure, the oracle's announcement signature, and every CET adaptor signature — then looks the collateral transaction up on Bitcoin over enclave egress, and signs the combined verdict with a key sealed to the approved binary.
+It verifies the contract the way Lygos's own [`dlc-verify`](https://github.com/LygosLabs/dlc-verify) does — message structure, the oracle's announcement signature, and every CET adaptor signature — then looks the collateral transaction up on Bitcoin over enclave egress, and signs the combined verdict with the enclave's ephemeral key.
 
 ## Why this is a rewrite rather than a port
 
@@ -49,9 +49,10 @@ lender can rely on before advancing funds. No chain lookup: the collateral need 
 
 The same verification, plus proof that the Bitcoin collateral is actually funded. The enclave
 reconstructs the expected funding transaction from the DLC itself, then queries Bitcoin over
-egress to confirm it is on chain with enough confirmations. The output is a signed attestation
-the Midnight contracts require before minting a collateral representation, which is what lets the
+egress to confirm it is on chain with enough confirmations. The output is the signed verdict the
+Midnight contracts consume before minting a collateral representation, which is what lets the
 guardian network keep securing the lender key without also acting as the verification quorum.
+(Turning that signature into a full attestation needs a boot proof; see below.)
 
 The response carries a `termsDigest` — a hash over the expected terms — so the EVM side can bind
 minting to exactly the terms that were verified rather than re-deriving them and hoping they agree.
@@ -169,7 +170,43 @@ Every response carries a `proof`: the enclave's signature over the exact JSON of
 }
 ```
 
-To check a proof: `publicKey` is two concatenated uncompressed P-256 points, and the **second** is the signing key. The signature is raw `r||s`, and the signed message is `payload` verbatim. `frontend/index.html` does this with WebCrypto in about fifteen lines.
+This is an **app proof** in the sense Turnkey's
+[Verified](https://docs.turnkey.com/security/turnkey-verified#app-proofs) documentation uses the
+term: a P-256 signature by the enclave's ephemeral key over a JSON payload.
+
+To check the signature: `publicKey` is two concatenated uncompressed P-256 points, and the
+**second** is the signing key. The signature is raw `r||s`, and the signed message is `payload`
+verbatim. `frontend/index.html` does this with WebCrypto in about fifteen lines.
+
+### What the signature alone does and does not show
+
+Verifying it shows that *the holder of that key* produced this exact verdict, and that nothing
+altered the verdict afterwards. It does **not** by itself show that the key belongs to an enclave
+running this reviewed code — any server holding a key could produce a self-consistent signature.
+
+Turnkey's model closes that gap with a **boot proof**: an AWS Nitro attestation document plus the
+signed QOS manifest, produced by the platform at boot, whose `public_key` field is the enclave's
+ephemeral key. The full check is:
+
+1. Obtain a valid boot proof and confirm the app proof's `publicKey` equals its `public_key` field.
+2. Verify the app proof signature (plain P-256), which the frontend already does.
+3. Parse the payload.
+
+Step 1 is what ties this verdict to attested code, and it is **not implemented here** — this demo
+stops at the app proof. Do not describe the green check in the UI as proving attestation; it
+proves signature integrity.
+
+Two things worth knowing if you pick this up:
+
+- **Do not have the app mint its own attestation document.** An earlier version of this repo added
+  an `/attestation` endpoint that called the Nitro Secure Module directly. That is the wrong
+  mechanism: the boot proof already exists and already binds the ephemeral key, and an enclave
+  vouching for itself proves nothing anyway. It was reverted.
+- **Use the official verifiers,** not a hand-rolled one:
+  [`turnkey_proofs`](https://github.com/tkhq/rust-sdk/tree/main/proofs) in Rust and
+  [`proof.ts`](https://github.com/tkhq/sdk/tree/main/packages/crypto/src/proof.ts) in TypeScript.
+  The TypeScript one matters here, because it means in-browser boot-proof verification is largely
+  a solved problem rather than a COSE reimplementation.
 
 ## Running locally
 
@@ -187,13 +224,10 @@ cd frontend && TVC_APP_URL=https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering
 
 `make run` generates throwaway keys in `/tmp/tvc-template-local-enclave`, so proofs verify against a key that is *not* attested. Local runs check routing and verification logic; only a deployed enclave demonstrates the attestation.
 
-> **What the proof currently shows.** The signature proves that the holder of the published key
-> signed these exact bytes. It does **not** yet prove that key belongs to an enclave running the
-> approved binary — nothing here fetches the Nitro attestation document or checks its PCRs against
-> the approved manifest. The deployed app has debug mode off, so those PCRs are real and the claim
-> is true; it is just not yet demonstrated, and the check would look identical if it were false.
-> Closing that gap is tracked in `tvc-configs/README.md`, along with a second, unrelated caveat
-> about the shared bootstrap quorum key.
+> **What the proof shows.** The signature proves the holder of the published key produced these
+> exact bytes. Tying that key to attested code needs a boot proof, which this demo does not do —
+> see "What the signature alone does and does not show" above. The deployed app has debug mode
+> off, so the PCRs behind such a proof would be real, but nothing here checks them.
 >
 > Debug mode makes this strictly worse: it zeroes the PCRs outright and permanently marks the
 > app's quorum key insecure, which cannot be undone by a later non-debug deployment. Use it only

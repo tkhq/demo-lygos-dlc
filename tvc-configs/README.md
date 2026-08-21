@@ -23,19 +23,18 @@ egress but can never serve debug logs — and neither flag can be changed after 
 
 ## Two caveats on what the attestation currently proves
 
-**1. Debug mode is off, but nothing verifies the PCRs yet.** Turning debug off means the
-attestation document now carries real PCR values instead of zeros, so the *claim* "this verdict
-came from the approved binary" is true. But the demo does not yet check it: the in-browser proof
-verifies only that the holder of the published key signed the payload. It never fetches the
-attestation document, never checks the PCRs against the approved manifest, and never confirms the
-signing key is the one the document attests to. Until that exists, the green checkmark would look
-identical on a debug deployment — so treat it as "signature verified", not "attestation verified".
+**1. Debug mode is off, but nothing ties the signing key to attested code.** Turning debug off
+means a boot proof for this enclave would carry real PCRs instead of zeros. But the demo stops at
+the app proof: it verifies that the enclave's key signed the verdict, not that the key belongs to
+an enclave running this code. Pairing the app proof with a boot proof is the missing step, and the
+green check in the UI must not be described as proving attestation until it exists.
 
-`qos_nsm` 0.13 has everything needed to close this (`Nsm::nsm_process_request` for the document,
-`/qos.manifest` for the expected PCRs, `nitro::verify_attestation_doc_against_manifest_live` for
-the comparison, and a hardcoded AWS root CA). It compiles on macOS and fails cleanly off-enclave,
-so an `/attestation` endpoint can degrade to "unavailable" locally. The one untested unknown is
-whether the pivot process can reach `/dev/nsm`.
+The way to do that is Turnkey's own flow — match the app proof's `publicKey` against a valid boot
+proof's `public_key` field, using [`turnkey_proofs`](https://github.com/tkhq/rust-sdk/tree/main/proofs)
+or the [TypeScript verifier](https://github.com/tkhq/sdk/tree/main/packages/crypto/src/proof.ts).
+An earlier attempt had the app call the Nitro Secure Module to mint its own document; that was the
+wrong mechanism and was reverted. The boot proof already exists and already binds the ephemeral
+key, and an enclave attesting to itself establishes nothing regardless.
 
 **2. The quorum key is a shared bootstrap key, independent of debug mode.** `tvc deploy
 provisioning-details` reports *"uses the insecure bootstrap quorum key and does not support manual
