@@ -1,0 +1,5 @@
+{
+  "name": "lygos-dlc-demo",
+  "enableEgress": true,
+  "dangerousEnableDebugModeDeployments": true
+}

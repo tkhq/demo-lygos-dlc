@@ -1,8 +1,8 @@
-//! Hello World REST server binary.
+//! DLC verification service binary.
 
 use clap::Parser;
-use helloworld::cli::Cli;
-use helloworld::router::{self, AppState};
+use dlc_verify::cli::Cli;
+use dlc_verify::router::{self, AppState};
 use metrics::MetricsLayer;
 use qos_p256::P256Pair;
 use std::io;
@@ -23,9 +23,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ephemeral_key = P256Pair::from_hex_file(cli.ephemeral_file)
         .map_err(|e| io::Error::other(format!("failed to load ephemeral key: {e:?}")))?;
-    let quorum_key = P256Pair::from_hex_file(cli.quorum_file)
-        .map_err(|e| io::Error::other(format!("failed to load quorum key: {e:?}")))?;
-    let app_state = AppState::new(ephemeral_key, quorum_key)?;
+    // Loaded but not retained: this app signs only with the ephemeral key. Reading the
+    // quorum key still fails fast if QOS did not provision the enclave as expected.
+    drop(
+        P256Pair::from_hex_file(cli.quorum_file)
+            .map_err(|e| io::Error::other(format!("failed to load quorum key: {e:?}")))?,
+    );
+    let app_state = AppState::new(ephemeral_key)?;
     let app = router::router_with_state(app_state)
         .layer(metrics_layer)
         .route("/metrics", metrics::handler(collector));
