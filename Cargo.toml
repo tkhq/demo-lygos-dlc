@@ -3,6 +3,7 @@ members = [
   "crates/e2e",
   "crates/metrics",
   "crates/dlc-verify",
+  "crates/attest-verify",
 ]
 
 resolver = "3"
@@ -42,6 +43,7 @@ qos_core = { version = "0.13.0", default-features = false }
 qos_hex = { version = "0.13.0", default-features = false }
 qos_json = { version = "0.13.0", default-features = false }
 qos_p256 = { version = "0.13.0", default-features = false }
+qos_nsm = { version = "0.13.0", default-features = false }
 dlc = "0.8.0"
 dlc-messages = "0.8.0"
 lightning = { version = "0.0.125", default-features = false, features = ["std"] }

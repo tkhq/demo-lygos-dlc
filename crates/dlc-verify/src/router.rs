@@ -1,6 +1,6 @@
 //! HTTP routing.
 
-use crate::handlers::{app_key, health, verify_contract, verify_loan};
+use crate::handlers::{app_key, attestation, health, verify_contract, verify_loan};
 use axum::{
     Router,
     routing::{get, post},
@@ -20,6 +20,7 @@ pub fn router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/app_key", get(app_key))
+        .route("/attestation", get(attestation))
         .route("/dlc/verify", post(verify_contract))
         .route("/dlc/verify_loan", post(verify_loan))
         .layer(

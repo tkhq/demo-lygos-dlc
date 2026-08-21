@@ -4,6 +4,7 @@
 //! CET adaptor signatures — and confirms the collateral transaction is on chain, then
 //! signs the combined verdict with the enclave's attested key.
 
+pub mod attestation;
 pub mod btc;
 pub mod checks;
 pub mod cli;
