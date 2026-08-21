@@ -33,7 +33,10 @@ jq --arg img "$image" --arg dg "$pivot" \
   "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
 
 tvc deploy create --config-file "$CONFIG" | tee /tmp/tvc-create.out
-deploy_id=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/tvc-create.out | head -1)
+# Match the labelled line. Taking the first UUID in the output picks up the app id from
+# the "Creating deployment for app '<uuid>'" banner instead.
+deploy_id=$(grep -oE 'Deployment ID: [0-9a-f-]{36}' /tmp/tvc-create.out | head -1 | awk '{print $3}')
+test -n "$deploy_id" || { echo "could not find a Deployment ID in tvc deploy create output"; exit 1; }
 echo "deploy id: $deploy_id"
 
 tvc deploy approve --deploy-id "$deploy_id" --operator-id "$OPERATOR_ID" --dangerous-skip-interactive

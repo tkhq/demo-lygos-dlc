@@ -187,12 +187,17 @@ cd frontend && TVC_APP_URL=https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering
 
 `make run` generates throwaway keys in `/tmp/tvc-template-local-enclave`, so proofs verify against a key that is *not* attested. Local runs check routing and verification logic; only a deployed enclave demonstrates the attestation.
 
-> **Debug mode voids the attestation.** A deployment created with `dangerousDeployDebugMode`
-> zeroes the attestation PCRs, so a proof signature no longer shows that the *approved binary*
-> produced the verdict — only that something holding the key signed it. Running one debug
-> deployment also marks the app's quorum key insecure permanently. Use debug mode while
-> iterating, and deploy to an app created with `dangerousEnableDebugModeDeployments: false`
-> before demonstrating the attestation to anyone. See `tvc-configs/README.md`.
+> **What the proof currently shows.** The signature proves that the holder of the published key
+> signed these exact bytes. It does **not** yet prove that key belongs to an enclave running the
+> approved binary — nothing here fetches the Nitro attestation document or checks its PCRs against
+> the approved manifest. The deployed app has debug mode off, so those PCRs are real and the claim
+> is true; it is just not yet demonstrated, and the check would look identical if it were false.
+> Closing that gap is tracked in `tvc-configs/README.md`, along with a second, unrelated caveat
+> about the shared bootstrap quorum key.
+>
+> Debug mode makes this strictly worse: it zeroes the PCRs outright and permanently marks the
+> app's quorum key insecure, which cannot be undone by a later non-debug deployment. Use it only
+> while iterating, on an app you intend to throw away.
 
 ### About the demo transaction id
 

@@ -1,10 +1,10 @@
 {
-  "name": "lygos-dlc-verify",
+  "name": "lygos-dlc-demo-v2",
   "quorumPublicKey": "04451028fc9d42cef6d8f2a3ebe17d65783c470dbc6f04663d500c12009930cf9b209e733f6ac6103cc28f07ecde2dbb55095738b828d6b7a55caf4ddf9d67f2ae047827dcd2325b8d58694c2ea14e8f1e1f8a36c84438d291ff9b1b067debdb3e2ba3822984cde8bed4de2c237bd323526da4961d368bcc63cbd2d37d00e936683e",
   "enableEgress": true,
   "manifestSetId": null,
   "manifestSetParams": {
-    "name": "lygos-dlc-verify-operators",
+    "name": "lygos-dlc-demo-v2-operators",
     "threshold": 1,
     "newOperators": [
       {
@@ -16,5 +16,5 @@
   },
   "shareSetId": null,
   "shareSetParams": null,
-  "dangerousEnableDebugModeDeployments": true
+  "dangerousEnableDebugModeDeployments": false
 }

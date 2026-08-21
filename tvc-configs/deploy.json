@@ -1,7 +1,7 @@
 {
-  "appId": "12af0180-bc5c-4079-9142-ca4688611e40",
+  "appId": "35e626e0-958b-48de-8ed9-e57dbf08fe41",
   "qosVersion": "0.12.1",
-  "pivotContainerImageUrl": "ghcr.io/tkhq/dlc-verify:pr-1@sha256:713c5169e97d8fad0b40b5b6713de52b3e303cd5c2ed2d2a2d79a566d4fd9942",
+  "pivotContainerImageUrl": "ghcr.io/tkhq/dlc-verify:pr-1@sha256:bae78265c9d2f13cd0a334238fcdd736142f54babb0fed1aa41092ff0d7d83e9",
   "pivotPath": "/tvc_app",
   "pivotArgs": [
     "--host",
@@ -9,8 +9,8 @@
     "--port",
     "3000"
   ],
-  "expectedPivotDigest": "d6a5773f8a3914c0fe1159ceaa970f86fcf0df974c73f6edecc5291b84a6fba8",
-  "dangerousDeployDebugMode": true,
+  "expectedPivotDigest": "044705875aa37e77ce14f59b9154f09b065f197468b523367ec64cec0b5ed813",
+  "dangerousDeployDebugMode": false,
   "healthCheckType": "TVC_HEALTH_CHECK_TYPE_HTTP",
   "healthCheckPort": 3000,
   "publicIngressPort": 3000
