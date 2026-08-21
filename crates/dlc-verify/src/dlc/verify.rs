@@ -89,6 +89,13 @@ pub struct DlcVerification {
     pub funding_address: Option<String>,
     /// The 2-of-2 redeem script.
     pub funding_script: Option<String>,
+    /// Where the offerer (borrower) receives its payout: the repayment and refund
+    /// destination.
+    pub offerer_payout_address: Option<String>,
+    /// Where the accepter (lender) receives its payout: the liquidation destination.
+    pub accepter_payout_address: Option<String>,
+    /// Where the offerer receives fund-transaction change.
+    pub offerer_change_address: Option<String>,
     /// Offerer's funding inputs.
     pub offer_inputs: Vec<FundingInputInfo>,
     /// Accepter's funding inputs.
@@ -121,6 +128,14 @@ pub struct DlcVerification {
     pub sign_contract_id: Option<String>,
     /// Whether that contract id matches the computed one.
     pub sign_contract_id_matches: Option<bool>,
+    /// Whether the accepter's refund signature verifies against the rebuilt refund
+    /// transaction. `None` when the transactions could not be rebuilt.
+    pub accepter_refund_sig_valid: Option<bool>,
+    /// Whether the offerer's refund signature (from the sign message) verifies.
+    /// `None` when no sign message was supplied.
+    pub offerer_refund_sig_valid: Option<bool>,
+    /// Why a refund signature failed to verify.
+    pub refund_sig_error: Option<String>,
     /// Fatal error that stopped verification.
     pub error: Option<String>,
 }
@@ -404,8 +419,25 @@ pub fn verify_dlc(
         .ok()
         .map(|address| address.to_string());
 
+    // Payout destinations, rendered as addresses so a caller can compare against the
+    // addresses in their loan paperwork rather than raw scripts. In these loans the offerer
+    // is the borrower (it posts all the collateral) and the accepter is the lender, so the
+    // offerer's payout is where collateral returns on repayment or refund, and the
+    // accepter's is where it goes on liquidation.
+    let render = |spk: &ScriptBuf| {
+        Address::from_script(spk, network)
+            .ok()
+            .map(|address| address.to_string())
+    };
+    result.offerer_payout_address = render(&offer.payout_spk);
+    result.accepter_payout_address = render(&accept.payout_spk);
+    result.offerer_change_address = render(&offer.change_spk);
+
     // Reconstruct the transactions and check the accepter's adaptor signatures against
-    // them. Only the single-funded shape is supported; see `txs` for why.
+    // them. Only the single-funded shape is supported; see `txs` for why. The rebuilt
+    // transactions are kept so the sign message's refund signature can be checked against
+    // the same refund transaction once it is parsed.
+    let mut rebuilt: Option<txs::DlcTransactions> = None;
     if !single_funded {
         result.adaptor_error = Some(
             "adaptor signature verification supports single-funded contracts only \
@@ -439,6 +471,7 @@ pub fn verify_dlc(
             &offer.funding_inputs,
             &payouts,
             &txs::ContractTerms {
+                refund_locktime: offer.refund_locktime,
                 total_collateral,
                 fee_rate_per_vb: offer.fee_rate_per_vb,
                 fund_output_serial_id: offer.fund_output_serial_id,
@@ -460,6 +493,18 @@ pub fn verify_dlc(
                 )));
 
                 verify_adaptor_signatures(&secp, &mut result, &built, &accept, oracle_info);
+
+                // The accepter's refund signature is in the accept message; the offerer's
+                // arrives with the sign message and is checked further down.
+                result.accepter_refund_sig_valid = Some(check_refund_signature(
+                    &secp,
+                    &mut result,
+                    &built,
+                    &accept.refund_signature,
+                    &accept.funding_pubkey,
+                    "accepter",
+                ));
+                rebuilt = Some(built);
             }
             Err(e) => result.adaptor_error = Some(format!("could not rebuild transactions: {e}")),
         }
@@ -475,6 +520,17 @@ pub fn verify_dlc(
                     .as_ref()
                     .map(|computed| *computed == sign_contract_id);
                 result.sign_contract_id = Some(sign_contract_id);
+
+                if let Some(built) = rebuilt.as_ref() {
+                    result.offerer_refund_sig_valid = Some(check_refund_signature(
+                        &secp,
+                        &mut result,
+                        built,
+                        &sign.refund_signature,
+                        &offer.funding_pubkey,
+                        "offerer",
+                    ));
+                }
             }
             Err(e) => {
                 result.error = Some(format!("failed to decode sign message: {e:?}"));
@@ -505,6 +561,41 @@ fn party_inputs(
 }
 
 /// Check every adaptor signature in the accept message against the rebuilt CETs.
+/// Check one party's refund signature against the rebuilt refund transaction.
+///
+/// The refund transaction spends the fund output back to each party's own collateral once
+/// `refund_locktime` passes, so a valid signature here is what lets a party recover funds
+/// if the oracle never attests. Returns whether it verified, recording the reason if not.
+fn check_refund_signature(
+    secp: &Secp256k1<secp256k1_zkp::All>,
+    result: &mut DlcVerification,
+    built: &txs::DlcTransactions,
+    signature: &secp256k1_zkp::ecdsa::Signature,
+    pubkey: &secp256k1_zkp::PublicKey,
+    whose: &str,
+) -> bool {
+    match dlc::verify_tx_input_sig(
+        secp,
+        signature,
+        &built.refund,
+        0,
+        &built.funding_script,
+        built.fund_output_value,
+        pubkey,
+    ) {
+        Ok(()) => true,
+        Err(e) => {
+            let message = format!("{whose} refund signature did not verify: {e}");
+            // Keep the first failure rather than overwriting, so both parties' problems
+            // are not collapsed into whichever ran last.
+            if result.refund_sig_error.is_none() {
+                result.refund_sig_error = Some(message);
+            }
+            false
+        }
+    }
+}
+
 fn verify_adaptor_signatures(
     secp: &Secp256k1<secp256k1_zkp::All>,
     result: &mut DlcVerification,
@@ -827,5 +918,51 @@ mod tests {
             .unwrap()
         };
         assert_eq!(run(), run());
+    }
+
+    /// The refund path is what lets a party recover funds if the oracle never attests, so
+    /// both parties' refund signatures have to verify against the same reconstructed refund
+    /// transaction. This is also a check on the reconstruction itself: the signature commits
+    /// to the transaction's sighash, so it only verifies if the rebuild is byte-exact.
+    #[test]
+    fn verifies_both_parties_refund_signatures() {
+        let with_sign = verify_dlc(
+            fixtures::SAMPLE_OFFER,
+            fixtures::SAMPLE_ACCEPT,
+            Some(fixtures::SAMPLE_SIGN),
+            &VerifyOptions::default(),
+        );
+        assert_eq!(with_sign.accepter_refund_sig_valid, Some(true));
+        assert_eq!(with_sign.offerer_refund_sig_valid, Some(true));
+        assert_eq!(with_sign.refund_sig_error, None);
+
+        // Without a sign message the offerer's signature simply is not present, which must
+        // read as "not checked" rather than as a failure.
+        let without_sign = verify_dlc(
+            fixtures::SAMPLE_OFFER,
+            fixtures::SAMPLE_ACCEPT,
+            None,
+            &VerifyOptions::default(),
+        );
+        assert_eq!(without_sign.accepter_refund_sig_valid, Some(true));
+        assert_eq!(without_sign.offerer_refund_sig_valid, None);
+        assert_eq!(without_sign.refund_sig_error, None);
+    }
+
+    #[test]
+    fn verifies_refund_signatures_across_fixtures() {
+        for (name, offer, accept) in [
+            ("sample", fixtures::SAMPLE_OFFER, fixtures::SAMPLE_ACCEPT),
+            ("testnet", fixtures::TESTNET_OFFER, fixtures::TESTNET_ACCEPT),
+            ("matured", fixtures::MATURED_OFFER, fixtures::MATURED_ACCEPT),
+        ] {
+            let result = verify_dlc(offer, accept, None, &VerifyOptions::default());
+            assert_eq!(
+                result.accepter_refund_sig_valid,
+                Some(true),
+                "{name}: {:?}",
+                result.refund_sig_error
+            );
+        }
     }
 }

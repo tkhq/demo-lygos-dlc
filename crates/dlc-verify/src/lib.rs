@@ -5,12 +5,15 @@
 //! signs the combined verdict with the enclave's attested key.
 
 pub mod btc;
+pub mod checks;
 pub mod cli;
 pub mod client;
 pub mod decision;
 pub mod dlc;
+pub mod event_id;
 pub mod fixtures;
 mod handlers;
 pub mod response;
 pub mod router;
 mod state;
+pub mod terms;

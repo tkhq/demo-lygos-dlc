@@ -124,6 +124,8 @@ pub struct DlcTransactions {
     pub funding_script: ScriptBuf,
     /// One CET per payout, in the same order as the contract's outcomes.
     pub cets: Vec<Transaction>,
+    /// The refund transaction, spendable once `refund_locktime` passes.
+    pub refund: Transaction,
     /// Fee paid by the fund transaction.
     pub fund_fee: Amount,
     /// CET fee, prepaid into the fund output.
@@ -143,6 +145,8 @@ fn weight_to_fee(weight: u64, fee_rate_per_vb: u64) -> Result<Amount, TxError> {
 
 /// Contract-level terms that shape the transactions.
 pub struct ContractTerms {
+    /// Locktime before which the refund transaction is not valid.
+    pub refund_locktime: u32,
     /// Total collateral the contract locks.
     pub total_collateral: Amount,
     /// Fee rate the contract was negotiated at.
@@ -171,6 +175,7 @@ pub fn build_single_funded(
     use bitcoin::consensus::Decodable;
 
     let ContractTerms {
+        refund_locktime,
         total_collateral,
         fee_rate_per_vb,
         fund_output_serial_id,
@@ -290,12 +295,27 @@ pub fn build_single_funded(
         .map(|payout| build_cet(payout, offer, accept, fund_outpoint, cet_locktime))
         .collect();
 
+    // The refund returns each party its own collateral, so it has the same shape as a CET
+    // whose payout is the original split. In a single-funded contract the accepter
+    // contributed nothing, so its side is dust and drops out.
+    let refund = build_cet(
+        &Payout {
+            offer: offer.collateral,
+            accept: accept.collateral,
+        },
+        offer,
+        accept,
+        fund_outpoint,
+        refund_locktime,
+    );
+
     Ok(DlcTransactions {
         fund,
         fund_vout,
         fund_output_value,
         funding_script,
         cets,
+        refund,
         fund_fee,
         cet_fee,
         change,

@@ -32,19 +32,83 @@ The borrower supplies all the collateral and all the inputs; the lender supplies
 
 This has to be exact — an adaptor signature commits to the CET's sighash, so one wrong byte invalidates every signature. For the sample contract that means a fund output of 11,470 sat (10,000 collateral + 1,470 prepaid CET fee), a fund fee of 2,490 sat, and fund txid `15659a28…604274`, which is what DDK produces and what the tests assert.
 
+## Two use cases
+
+The same verification serves two callers who need different things proven. `profile` on the
+request decides what is allowed to block the verdict; the cryptography is identical either way.
+
+### Institutional lender
+
+Lygos hands the lender the offer, accept and sign messages. The lender supplies the terms it
+agreed to — lender key, oracle key and event id, repayment and liquidation destinations, refund
+address and locktime, maturity, collateral, payouts. The enclave confirms the contract is
+cryptographically sound **and** that it encodes those terms, and returns a decoded report the
+lender can rely on before advancing funds. No chain lookup: the collateral need not be posted yet.
+
+### Morpho Midnight
+
+The same verification, plus proof that the Bitcoin collateral is actually funded. The enclave
+reconstructs the expected funding transaction from the DLC itself, then queries Bitcoin over
+egress to confirm it is on chain with enough confirmations. The output is a signed attestation
+the Midnight contracts require before minting a collateral representation, which is what lets the
+guardian network keep securing the lender key without also acting as the verification quorum.
+
+The response carries a `termsDigest` — a hash over the expected terms — so the EVM side can bind
+minting to exactly the terms that were verified rather than re-deriving them and hoping they agree.
+
 ## What it checks
 
 | Check | Meaning |
 | --- | --- |
 | Message structure | The offer, accept, and sign messages decode |
 | Oracle announcement signature | The oracle really committed to this event |
-| Oracle key matches expected | The contract names the oracle the caller requires |
 | CET adaptor signatures | Each payout can only be claimed with the oracle's attestation for that outcome |
+| Refund signatures | Both parties can recover funds if the oracle never attests |
 | Sign contract id | The sign message refers to the contract the offer and accept imply |
-| On-chain inclusion | The collateral transaction is in a block, with enough confirmations |
-| Funding output match | An output pays this contract's 2-of-2 script for the expected amount |
+| Oracle event id | The contract references the event the caller expects |
+| Expected terms | Keys, destinations, amounts, locktimes and payouts match what was agreed |
+| On-chain funding | The collateral transaction is in a block with enough confirmations |
 
-The verdict is `verified` only if everything passes. Otherwise `failureReasons` says which of `MALFORMED_INPUT`, `DLC_VERIFICATION_FAILED`, `MISMATCH_EXPECTED_VS_PARSED`, `TX_NOT_FOUND`, or `EXPLORER_REQUEST_FAILED` applied — a contract that is cryptographically sound but references an unexpected oracle is not the same failure as one whose signatures do not check out.
+Each check reports one of four statuses, and the difference between the last three matters:
+
+- `pass` — checked and matched
+- `fail` — checked and did not match
+- `not_checked` — the caller supplied no expectation, so nothing was compared
+- `not_verifiable` — no verdict is possible (see the event-id note below)
+
+A `required` check only satisfies the verdict on `pass`. Treating `not_checked` as success is
+exactly how a gate ends up approving something it never verified, so an expectation you did not
+state can never be mistaken for one that was met — and supplying no terms at all fails outright
+rather than reporting a green built on nothing.
+
+`failureReasons` gives a caller a small set to branch on (`MALFORMED_INPUT`,
+`DLC_VERIFICATION_FAILED`, `MISMATCH_EXPECTED_VS_PARSED`, `TX_NOT_FOUND`,
+`EXPLORER_REQUEST_FAILED`, `CHECK_NOT_VERIFIABLE`), and `blockingChecks` names precisely which
+required checks did not pass. A contract that is cryptographically perfect but encodes different
+terms fails as a mismatch, not as broken cryptography — those are different problems.
+
+### The oracle event id, and what is a placeholder
+
+The event id ties the DLC to a *specific* loan, so it is worth checking two ways:
+
+- **Exact match** against an id the caller expects. This is real and works today.
+- **Recomputation** from the loan parameters, which proves the DLC encodes the terms the lender
+  believes it does without trusting any id handed to them.
+
+**The recomputation here uses a documented placeholder, not Lygos's derivation.** Their event ids
+are `loan-matured-` plus a 32-byte hash, and that hash is not derived from anything inside the
+DLC, so it is computed over off-chain loan parameters whose encoding is not published — three
+sample contracts are not enough to recover it. Rather than guess, `event_id.rs` reports
+`not_verifiable` and never a pass or a fail, so it cannot produce a misleading green or blame the
+contract for our missing rule. It still earns its place: every loan parameter affects the derived
+id, so altering any term visibly changes it, which is the whole argument for the real check.
+Substituting Lygos's derivation is a one-function change.
+
+### EVM terms are attested, not verified
+
+`expected.evm` is echoed into the report and the signed payload as `informational`, labelled
+`not verified here`. This service verifies the Bitcoin and DLC side; the EVM side binds to the
+same values via the `termsDigest`. Reporting them as checked would be a claim we cannot support.
 
 ## API
 
@@ -52,20 +116,34 @@ The verdict is `verified` only if everything passes. Otherwise `failureReasons` 
 | --- | --- |
 | `GET /health` | Liveness |
 | `GET /app_key` | The enclave's public key, for verifying proofs |
-| `POST /dlc/verify` | Verify the contract only. No network access, fully deterministic |
-| `POST /dlc/verify_loan` | Verify the contract **and** check the collateral on Bitcoin |
+| `POST /dlc/verify` | Contract and expected terms. No network access, fully deterministic |
+| `POST /dlc/verify_loan` | The same, **and** confirm the collateral on Bitcoin over egress |
 | `GET /metrics` | Prometheus metrics |
 
 ```sh
 curl -X POST "$BASE/dlc/verify_loan" -H 'content-type: application/json' -d '{
-  "offerHex": "a71a…",
-  "acceptHex": "a71c…",
-  "signHex": "a71e…",
-  "expectedOraclePubkey": "8731249d…",
-  "btcTxid": "dcf70d60…",
-  "bitcoinNetwork": "testnet"
+  "profile": "morpho_midnight",
+  "offerHex": "a71a…", "acceptHex": "a71c…", "signHex": "a71e…",
+  "network": "regtest",
+  "expected": {
+    "lenderPubkey": "031d7709…", "oraclePubkey": "8731249d…",
+    "oracleEventId": "loan-matured-1da042f2…",
+    "totalCollateralSats": 10000,
+    "repayment":   { "address": "bcrt1q6tas5…", "sats": 10000 },
+    "liquidation": { "address": "bcrt1qup6w2…" },
+    "refund":      { "address": "bcrt1q6tas5…", "locktime": 1790352000 },
+    "cetLocktime": 1781734876,
+    "outcomes": [ { "label": "repaid", "offererSats": 10000, "accepterSats": 0 } ],
+    "loanTerms": { "loanId": "LYG-2026-001", "repaymentAmount": "52500" },
+    "evm": { "position": "morpho-midnight-42", "collateralSats": 10000 }
+  },
+  "btcTxid": "dcf70d60…", "bitcoinNetwork": "testnet"
 }'
 ```
+
+`profile` is `institutional_lender` (the default) or `morpho_midnight`. Everything under
+`expected` is optional, but a request with no expectations at all fails rather than reporting a
+verdict it cannot support.
 
 Omit `btcTxid` and the app checks the fund transaction it derived from the contract, which is the production behaviour. Omit `expectedOraclePubkey` and the oracle-identity check is skipped rather than assumed.
 
@@ -74,8 +152,18 @@ Every response carries a `proof`: the enclave's signature over the exact JSON of
 ```jsonc
 {
   "status": "verified",
+  "profile": "morpho_midnight",
   "dlc": { "adaptorSigsValid": true, "adaptorValidCount": 5, "fundTxid": "15659a28…" },
   "bitcoin": { "confirmed": true, "blockHeight": 5124341, "confirmations": 430 },
+  "checks": [
+    { "id": "cet_adaptor_signatures", "status": "pass", "severity": "required" },
+    { "id": "liquidation_address", "status": "pass", "severity": "required",
+      "expected": "bcrt1qup6w2…", "actual": "bcrt1qup6w2…" },
+    { "id": "oracle_event_id_recomputed", "status": "not_verifiable",
+      "severity": "informational", "detail": "derivation=DEMO_PLACEHOLDER…" }
+  ],
+  "blockingChecks": [],
+  "termsDigest": "eeab2237…",
   "failureReasons": [],
   "proof": { "algorithm": "P256", "publicKey": "04…", "payload": "{…}", "signature": "…" }
 }
@@ -98,6 +186,13 @@ cd frontend && TVC_APP_URL=https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering
 ```
 
 `make run` generates throwaway keys in `/tmp/tvc-template-local-enclave`, so proofs verify against a key that is *not* attested. Local runs check routing and verification logic; only a deployed enclave demonstrates the attestation.
+
+> **Debug mode voids the attestation.** A deployment created with `dangerousDeployDebugMode`
+> zeroes the attestation PCRs, so a proof signature no longer shows that the *approved binary*
+> produced the verdict — only that something holding the key signed it. Running one debug
+> deployment also marks the app's quorum key insecure permanently. Use debug mode while
+> iterating, and deploy to an app created with `dangerousEnableDebugModeDeployments: false`
+> before demonstrating the attestation to anyone. See `tvc-configs/README.md`.
 
 ### About the demo transaction id
 
@@ -142,10 +237,13 @@ Worth knowing:
 ```
 crates/dlc-verify/src/
   dlc/codec.rs     node-dlc wire decoding, including the dlc_input extension
-  dlc/txs.rs       single-funded fund transaction and CET reconstruction
-  dlc/verify.rs    oracle and adaptor signature verification
+  dlc/txs.rs       single-funded fund, CET and refund reconstruction
+  dlc/verify.rs    oracle, adaptor and refund signature verification
   btc.rs           Esplora inclusion lookup over enclave egress
-  decision.rs      combines both into one verdict
+  checks.rs        the structured report and what is allowed to block
+  terms.rs         expected-term comparison and the terms digest
+  event_id.rs      event-id matching, and the placeholder derivation
+  decision.rs      assembles the verdict per profile
   handlers/dlc.rs  HTTP endpoints and the app proof
   fixtures.rs      sample contracts, generated from fixtures/
 crates/e2e/        tests against a spawned server

@@ -1,6 +1,23 @@
 # TVC app and deployment config
 
-Identifiers for the dev deployment of this app. These are identifiers, not secrets.
+## This app is for iteration, not for demoing
+
+> **The current app runs in debug mode, so its attestation proves nothing.** Debug-mode
+> deployments zero the attestation PCRs, which means a proof signature shows only that
+> *something* holding the key signed the payload — not that the approved binary produced it.
+> That guarantee is the entire reason this service runs in an enclave, so a demo given on this
+> app would be making a claim it cannot support.
+>
+> The taint is also permanent: running even one debug deployment marks the app's quorum key
+> insecure for good, and turning debug off for a later deployment does not undo it.
+>
+> **Before showing this to anyone, create a fresh app with
+> `dangerousEnableDebugModeDeployments: false` and deploy with `dangerousDeployDebugMode: false`,
+> then confirm the attestation PCRs are non-zero.** Keep debug on only while iterating, where
+> being able to read `tvc deploy debug-logs` is worth more than an attestation nobody is
+> checking yet.
+
+Identifiers for the current (debug) app. These are identifiers, not secrets.
 
 | | |
 | --- | --- |
@@ -13,13 +30,14 @@ Identifiers for the dev deployment of this app. These are identifiers, not secre
 Note the host is `apps.tvc-dev.turnkey.engineering`, not the `tvc.dev.turnkey.engineering`
 pattern some older runbooks quote. Take the domain from `tvc app list` rather than assuming it.
 
-`enableEgress` and `dangerousEnableDebugModeDeployments` are both true and **cannot be changed
-after creation** — egress is what lets the enclave reach Blockstream, and without the debug flag
-`tvc deploy debug-logs` is unavailable, which is the only way to see why an enclave failed to
-boot. Debug mode also has to be set per deployment (`dangerousDeployDebugMode`), and needs both.
+`enableEgress` is true and **cannot be changed after creation** — it is what lets the enclave
+reach Blockstream. Debug mode is two flags that both have to be set: the app must permit it
+(`dangerousEnableDebugModeDeployments`, also fixed at creation) and the deployment must ask for
+it (`dangerousDeployDebugMode`). Set the app flag to `false` for anything you intend to show.
 
 Requires `tvc` >= 0.14.0. Older CLIs use different field names for these
-(`externalConnectivity`, `debugMode`) and silently omit the app-level debug flag entirely.
+(`externalConnectivity`, `debugMode`) and silently omit the app-level debug flag entirely, so an
+app created with one gets working egress but can never serve debug logs.
 
 ## Deploying
 
