@@ -94,7 +94,7 @@ make run      # 127.0.0.1:44020
 Then open `frontend/index.html`. It points at `http://127.0.0.1:44020` by default; to aim it elsewhere:
 
 ```sh
-cd frontend && TVC_APP_URL=https://app-<APP_ID>.tvc.dev.turnkey.engineering ./build.sh
+cd frontend && TVC_APP_URL=https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering ./build.sh
 ```
 
 `make run` generates throwaway keys in `/tmp/tvc-template-local-enclave`, so proofs verify against a key that is *not* attested. Local runs check routing and verification logic; only a deployed enclave demonstrates the attestation.
@@ -110,10 +110,16 @@ The deploy config pins an image digest and the SHA-256 of the binary inside it, 
 One-time, noting that `enableEgress` and debug mode **cannot be added to an app later**:
 
 ```sh
-cargo install tvc
+cargo install tvc --locked   # 0.14.0 or newer, see below
 tvc login --api-base-url https://api.dev.turnkey.engineering
 tvc app create --config-file tvc-configs/app.json   # record the app id and operator id
 ```
+
+`tvc-configs/app.json` targets **tvc >= 0.14.0**. An older CLI names these fields differently
+(`externalConnectivity` for egress, `debugMode` on the deployment) and has no app-level debug
+field at all, so creating the app with one silently produces an app that egress works on but
+that can never serve debug logs — and neither flag can be changed afterwards. Check with
+`cargo install --list | grep tvc` before creating anything.
 
 Then per pass: `make lint test`, push, wait for the `stagex` workflow, take **Container Image URL** and **Expected Executable Digest** from its summary, and deploy them.
 
@@ -121,7 +127,7 @@ Then per pass: `make lint test`, push, wait for the `stagex` workflow, take **Co
 OPERATOR_ID=<operator-id> ./tvc-configs/deploy-latest.sh
 ```
 
-The app URL is stable at `https://app-<APP_ID>.tvc.dev.turnkey.engineering`, so only the deployment changes. Delete the superseded deployment once the new one serves traffic, otherwise it is ambiguous which build answered a request.
+The app URL is stable at `https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering`, so only the deployment changes. Delete the superseded deployment once the new one serves traffic, otherwise it is ambiguous which build answered a request.
 
 Worth knowing:
 

@@ -2,7 +2,11 @@ name: pages
 
 on:
   push:
-    branches: [main]
+    # `connor/dlc-verify-rust` is here so the demo can be published before the PR
+    # merges; drop it once this is on main. Deploying from a non-default branch also
+    # needs the `github-pages` environment to allow that branch, which it does not by
+    # default — see README.
+    branches: [main, connor/dlc-verify-rust]
     paths:
       - "frontend/**"
       - ".github/workflows/pages.yml"

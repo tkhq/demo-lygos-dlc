@@ -14,9 +14,14 @@ run_id=$(gh run list -R "$REPO" -w stagex -L 1 --json databaseId -q '.[0].databa
 echo "watching stagex run $run_id"
 gh run watch -R "$REPO" "$run_id" --exit-status
 
-log=$(gh run view "$run_id" -R "$REPO" --log)
-image=$(printf '%s' "$log" | grep -m1 'Container Image URL:' | sed 's/.*Container Image URL: //' | tr -d '\r')
-pivot=$(printf '%s' "$log" | grep -m1 'Expected Executable Digest:' | sed 's/.*Expected Executable Digest: //' | tr -d '\r')
+# The log contains both the workflow's echoed commands and their output, so match only
+# lines carrying a resolved value. Grepping the label alone picks up the echo line first
+# and yields a literal "${container_url}".
+log=$(gh run view "$run_id" -R "$REPO" --log | sed 's/\x1b\[[0-9;]*m//g')
+image=$(printf '%s' "$log" | grep -oE 'Container Image URL: ghcr\.io/[^[:space:]]+@sha256:[0-9a-f]{64}' \
+  | head -1 | sed 's/.*Container Image URL: //')
+pivot=$(printf '%s' "$log" | grep -oE 'Expected Executable Digest: [0-9a-f]{64}' \
+  | head -1 | sed 's/.*Expected Executable Digest: //')
 
 test -n "$image" || { echo "no image URL in run log"; exit 1; }
 test -n "$pivot" || { echo "no pivot digest in run log"; exit 1; }

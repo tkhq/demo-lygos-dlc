@@ -4,15 +4,22 @@ Identifiers for the dev deployment of this app. These are identifiers, not secre
 
 | | |
 | --- | --- |
-| App ID | `b7e80e58-21b9-4480-8ba1-860bef4a016f` |
+| App ID | `12af0180-bc5c-4079-9142-ca4688611e40` |
 | Operator ID | `0066f25e-cccc-4f4a-885c-c6d08a4006f3` |
-| Manifest Set ID | `5315fd1b-00f9-496b-8d78-12f4c6f860d7` |
+| Manifest Set ID | `5ca0c93f-7a39-4780-a7c7-c2e77bfd4ad9` |
 | Org | Connor Dev (`76043c53-0cae-4ab9-882c-d373611432c4`), api.dev.turnkey.engineering |
-| App URL | https://app-b7e80e58-21b9-4480-8ba1-860bef4a016f.tvc.dev.turnkey.engineering |
+| App URL | https://app-12af0180-bc5c-4079-9142-ca4688611e40.apps.tvc-dev.turnkey.engineering |
 
-`externalConnectivity` is `true` on the app, which the Blockstream lookup needs and which
-cannot be changed after creation. `debugMode` is per-deployment in `deploy.json`, so it can be
-turned off for a later deployment without recreating the app.
+Note the host is `apps.tvc-dev.turnkey.engineering`, not the `tvc.dev.turnkey.engineering`
+pattern some older runbooks quote. Take the domain from `tvc app list` rather than assuming it.
+
+`enableEgress` and `dangerousEnableDebugModeDeployments` are both true and **cannot be changed
+after creation** — egress is what lets the enclave reach Blockstream, and without the debug flag
+`tvc deploy debug-logs` is unavailable, which is the only way to see why an enclave failed to
+boot. Debug mode also has to be set per deployment (`dangerousDeployDebugMode`), and needs both.
+
+Requires `tvc` >= 0.14.0. Older CLIs use different field names for these
+(`externalConnectivity`, `debugMode`) and silently omit the app-level debug flag entirely.
 
 ## Deploying
 
