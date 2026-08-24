@@ -29,8 +29,7 @@ combined verdict with the enclave's ephemeral key.
 
 ## Known gaps
 
-Everything here is something a production system would need and this demo does not do. Listed so
-nobody discovers them during a call.
+Everything here is something a production system would need and this demo does not do.
 
 **The attestation is not verified.** The service signs its verdict with the enclave's ephemeral key
 (an *app proof*), and the page checks that signature. Nothing pairs it with a *boot proof*, so
