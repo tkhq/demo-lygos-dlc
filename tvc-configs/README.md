@@ -1,5 +1,10 @@
 # TVC app and deployment config
 
+> **Dev environment, demonstration only.** These identifiers point at an unsupported app on
+> Turnkey's dev cluster that may be deleted or redeployed without notice. Nothing here is
+> production infrastructure, and nothing depending on it should be treated as reliable. See the
+> repository README for the full list of what this demo does not guarantee.
+
 ## Current app: `lygos-dlc-demo-v2`
 
 Identifiers for the dev deployment. These are identifiers, not secrets.

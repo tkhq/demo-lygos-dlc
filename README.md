@@ -1,8 +1,68 @@
 # Lygos DLC verification in a TVC enclave
 
+> ### Read this first: what this repository is, and is not
+>
+> **This is a demonstration.** It was built by Turnkey Solutions Engineering to show Lygos and
+> their lending partner what verifying a DLC inside a TVC enclave looks like, and how a client
+> would verify the result. It is illustrative code, not a product.
+>
+> **It is unsupported.** No SLA, no uptime commitment, no maintenance promise, no security
+> contact, and no guarantee it still works tomorrow. The deployment is on Turnkey's **dev**
+> environment and may be deleted or redeployed without notice. Nothing here is covered by any
+> agreement you have with Turnkey.
+>
+> **It has not been audited or reviewed for security**, by Turnkey or anyone else.
+>
+> **Do not use it to gate real funds, and do not treat its output as a source of truth about a
+> real loan.** The known gaps below are not theoretical: several of them will return a passing
+> verdict in situations where a production system must refuse.
+>
+> Provided as is, without warranty of any kind, express or implied.
+
 A Rust service that runs inside a [Turnkey Verifiable Cloud](https://docs.turnkey.com) enclave and answers one question about a Lygos loan: **is this contract sound, and is its collateral actually locked on Bitcoin?**
 
 It verifies the contract the way Lygos's own [`dlc-verify`](https://github.com/LygosLabs/dlc-verify) does — message structure, the oracle's announcement signature, and every CET adaptor signature — then looks the collateral transaction up on Bitcoin over enclave egress, and signs the combined verdict with the enclave's ephemeral key.
+
+## Known gaps, stated plainly
+
+Every item here is something a production system would need and this demo does not do. They are
+listed so nobody has to discover them during a call.
+
+**The attestation is not verified.** The service signs its verdict with the enclave's ephemeral
+key (an *app proof*), and the page checks that signature. Nothing pairs it with a *boot proof*, so
+nothing establishes that the signing key belongs to an enclave running this code. A passing
+signature check would look identical if it were not. See
+[How the lending partner verifies](#how-the-lending-partner-verifies--app-proofs-and-boot-proofs).
+
+**The quorum key is a shared bootstrap key.** `tvc deploy provisioning-details` reports *"uses the
+insecure bootstrap quorum key"*. Every app created from `tvc app init` in this org carries the same
+pre-filled `quorumPublicKey` and no per-app key was provisioned through the share-set flow. This
+service does not sign with the quorum key, but nothing depending on it should be considered secure.
+
+**Oracle event-id recomputation is a placeholder.** Lygos's derivation is not published and was not
+guessed at. The check reports `not_verifiable` and never a pass or a fail. The exact-match check
+against a caller-supplied event id is real.
+
+**A passing `morpho_midnight` verdict does not prove the collateral belongs to the contract.** The
+transaction is checked for inclusion and confirmations, and `funding_output_match` reports whether
+it actually pays the contract's 2-of-2 script for the right amount — but that check is
+*informational*, so a verdict can read `verified` while pointing at an unrelated transaction. A
+production gate must make it blocking. It is informational here only because the sample contracts
+were never broadcast, so no real transaction can satisfy it.
+
+**One confirmation counts as settled.** `MIN_CONFIRMATIONS` is 1. That is a demo value, not a
+lending policy.
+
+**This is a reimplementation of Lygos's `dlc-verify`, not that code running.** It agrees with DDK
+on the fixtures here, byte-for-byte on the funding transaction, but it is a port and can drift as
+Lygos changes theirs. It carries no guarantee of equivalence.
+
+**CORS is fully permissive** so the GitHub Pages page can call the enclave. Every endpoint is a
+read-only verification and the enclave holds no per-user state, but this is not a posture to copy.
+
+**The sample contracts are regtest and testnet fixtures that were never broadcast.** The prefilled
+collateral transaction is a real but unrelated testnet transaction, present so the on-chain step
+runs against something. It is not this contract's collateral.
 
 ## Why this is a rewrite rather than a port
 
