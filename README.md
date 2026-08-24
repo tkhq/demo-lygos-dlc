@@ -53,8 +53,7 @@ so a verdict can read `verified` while pointing at an unrelated transaction. A p
 to make it blocking. It is informational here because the sample contracts were never broadcast, so
 no real transaction can satisfy it.
 
-**One confirmation counts as settled.** `MIN_CONFIRMATIONS` is 1. That is a demo value, not a
-lending policy.
+**One confirmation counts as settled.** `MIN_CONFIRMATIONS` is 1.
 
 **This is a reimplementation of Lygos's `dlc-verify`, not that code running.** It agrees with DDK on
 the fixtures here, byte-for-byte on the funding transaction, but it is a port and can drift as Lygos
@@ -321,11 +320,6 @@ Use Turnkey's verifiers rather than writing your own:
 [`proof.ts`](https://github.com/tkhq/sdk/tree/main/packages/crypto/src/proof.ts) in TypeScript. The
 TypeScript one means in-browser boot-proof verification is largely solved rather than a COSE
 reimplementation.
-
-**One open question to resolve with Turnkey.** For a *TVC app* it is not obvious how a client
-retrieves the boot proof. Neither `tvc` nor the `turnkey` CLI exposes a command for it, and the
-deployed app serves no such endpoint. The documented flow covers Turnkey's own enclaves. The partner
-needs a supported way to fetch it, so this is worth settling before they build step 2.
 
 **Do not have the app mint its own attestation document.** An earlier version of this repo added an
 `/attestation` endpoint calling the Nitro Secure Module directly. That is the wrong mechanism. The
