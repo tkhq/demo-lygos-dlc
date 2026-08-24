@@ -134,7 +134,7 @@
 <div class="hero">
   <div class="overline">Turnkey Verifiable Cloud / Lygos</div>
   <h1>Verifying a Bitcoin loan inside an enclave</h1>
-  <p>A Rust app in a <strong>Turnkey Verifiable Cloud</strong> enclave decodes a Lygos DLC, checks every signature, confirms the contract encodes <strong>the terms you agreed to</strong>, and — where it matters — proves the collateral is locked on Bitcoin. It signs the verdict with the enclave's own key.</p>
+  <p>A Rust app in a <strong>Turnkey Verifiable Cloud</strong> enclave decodes a Lygos DLC, checks every signature, confirms the contract encodes <strong>the terms you agreed to</strong>, and proves the collateral is locked on Bitcoin. It signs the verdict with the enclave's own key.</p>
 </div>
 
 <div class="wrap">
@@ -144,7 +144,7 @@
     <button class="usecase active" id="uc-lender" data-profile="institutional_lender">
       <div class="usecase-tag">Use case 1</div>
       <div class="usecase-name">Institutional lender</div>
-      <div class="usecase-desc">Before advancing funds, prove the DLC is cryptographically sound <em>and</em> encodes the agreed keys, addresses, payouts and dates. No on-chain step — the collateral need not be posted yet.</div>
+      <div class="usecase-desc">Before advancing funds, prove the DLC is cryptographically sound <em>and</em> encodes the agreed keys, addresses, payouts and dates. Supply a collateral transaction to confirm the borrower's Bitcoin is locked, or leave it out to review terms before any is posted.</div>
     </button>
     <button class="usecase" id="uc-midnight" data-profile="morpho_midnight">
       <div class="usecase-tag">Use case 2</div>
@@ -164,7 +164,7 @@
       <div class="callout" id="preset-note"></div>
 
       <div class="subhead"><span class="subhead-label">Expected terms</span><div class="subhead-line"></div></div>
-      <div class="callout">Anything left blank is reported as <code>not checked</code> — deliberately distinct from <code>passed</code>, so an expectation you never stated can never be mistaken for one that was satisfied.</div>
+      <div class="callout">Anything left blank is reported as <code>not checked</code>, which is deliberately distinct from <code>passed</code>, so an expectation you never stated can never be mistaken for one that was satisfied.</div>
 
       <div class="grid2" style="margin-top:14px">
         <div><label class="fl" for="t-lender">Lender funding key</label><input type="text" id="t-lender" /></div>
@@ -188,7 +188,7 @@
         <div><label class="fl" for="t-repayamt">Repayment amount</label><input type="text" id="t-repayamt" /></div>
         <div><label class="fl" for="t-liqprice">Liquidation price</label><input type="text" id="t-liqprice" /></div>
       </div>
-      <div class="callout warn">These drive the <strong>event-id recomputation</strong>, which ties the DLC to the loan terms themselves. The derivation here is a <strong>documented placeholder, not Lygos's rule</strong>, so it reports no verdict — but changing any parameter visibly changes the derived id, which is exactly why the real check is worth having. Use <em>Alter a loan term</em> below to see it.</div>
+      <div class="callout warn">These drive the <strong>event-id recomputation</strong>, which ties the DLC to the loan terms themselves. The derivation here is a <strong>documented placeholder, not Lygos's rule</strong>, so it reports no verdict. Changing any parameter still visibly changes the derived id, which is exactly why the real check is worth having. Use <em>Alter a loan term</em> below to see it.</div>
 
       <!-- Both use cases: a lender advancing funds needs the collateral confirmed too. -->
       <div>
@@ -247,14 +247,14 @@ const DEMO_TXID = 'dcf70d60370559665cc45b66841a2aab6d755b1df38a823bbbc8d38dd05db
 const COPY = {
   institutional_lender: {
     inputTitle: 'Loan contract, agreed terms, and collateral',
-    inputDesc: 'Lygos gives you the offer, accept and sign messages. You supply the terms you agreed to. The enclave confirms the contract encodes them and that the borrower\'s collateral is locked on Bitcoin — checking the chain itself, so you are not taking anyone\'s word for it.',
+    inputDesc: 'Lygos gives you the offer, accept and sign messages. You supply the terms you agreed to. The enclave confirms the contract encodes them and that the borrower\'s collateral is locked on Bitcoin, checking the chain itself so you are not taking anyone\'s word for it.',
     outTitle: 'Decoded loan report',
     outDesc: 'A pass/fail you can rely on before advancing funds, with every term checked against the contract and the collateral confirmed on chain.',
-    collateralNote: 'Leave this blank to review terms before the borrower has posted collateral — the report will say the collateral was not checked rather than implying it passed.',
+    collateralNote: 'Leave this blank to review terms before the borrower has posted collateral. The report will then say the collateral was not checked rather than implying it passed.',
   },
   morpho_midnight: {
     inputTitle: 'Loan contract, expected terms, and collateral',
-    inputDesc: 'The same verification, plus confirmation that the Bitcoin collateral is funded — the enclave queries Bitcoin itself over egress.',
+    inputDesc: 'The same verification, plus confirmation that the Bitcoin collateral is funded. The enclave queries Bitcoin itself over egress.',
     outTitle: 'Signed attestation',
     outDesc: 'What the Midnight contracts consume before minting a collateral representation: the verdict, the terms digest, and the enclave signature over both.',
     collateralNote: 'Required: a collateral representation cannot be minted against collateral that is not confirmed on chain.',
@@ -364,7 +364,7 @@ function buildRequest(mutate) {
 }
 
 /// Which endpoint to call. The chain is consulted whenever a collateral transaction is on
-/// offer, whichever use case is running — a lender advancing funds needs it as much as the
+/// offer, whichever use case is running. A lender advancing funds needs it as much as the
 /// minting side. Only a lender reviewing terms before collateral exists skips it.
 function endpointFor(profile, body) {
   if (body.btcTxid) return '/dlc/verify_loan';
@@ -397,7 +397,7 @@ async function run(mutate) {
 /// Verify the enclave's P-256 signature over the payload it returned.
 ///
 /// `qos_p256` publishes two concatenated uncompressed points, the encryption key first and
-/// the *signing* key second, and signs raw r||s — which is what WebCrypto expects.
+/// the *signing* key second, and signs raw r||s, which is what WebCrypto expects.
 const hexToBytes = (hex) => new Uint8Array(hex.match(/../g).map((h) => parseInt(h, 16)));
 async function verifyProof(proof) {
   try {
@@ -421,7 +421,7 @@ function checkRow(c) {
   const [cls, text] = BADGE[c.status] || ['skip','?'];
   const isReqFail = c.severity === 'required' && c.status !== 'pass';
   const vals = (c.expected !== undefined || c.actual !== undefined)
-    ? `<div class="check-vals"><span class="exp">expected</span> ${esc(c.expected ?? '—')} &nbsp;·&nbsp; <span class="exp">actual</span> ${esc(c.actual ?? '—')}</div>` : '';
+    ? `<div class="check-vals"><span class="exp">expected</span> ${esc(c.expected ?? 'n/a')} &nbsp;·&nbsp; <span class="exp">actual</span> ${esc(c.actual ?? 'n/a')}</div>` : '';
   const detail = c.detail ? `<div class="check-detail">${esc(c.detail)}</div>` : '';
   return `<tr class="${isReqFail ? 'req-fail' : ''}">
     <td style="width:1%"><span class="badge ${cls}">${text}</span></td>
@@ -445,13 +445,13 @@ async function render(data, request, mutate) {
       <div class="verdict-icon">${pass ? '&#9989;' : '&#10060;'}</div>
       <div>
         <div class="verdict-main">${pass
-          ? (profile === 'morpho_midnight' ? 'VERIFIED — attestation issued' : 'VERIFIED — terms match, funds may be advanced')
-          : 'FAILED — do not proceed'}</div>
+          ? (profile === 'morpho_midnight' ? 'VERIFIED: attestation issued' : 'VERIFIED: terms match, funds may be advanced')
+          : 'FAILED: do not proceed'}</div>
         <div class="verdict-sub">${esc(data.profileLabel)} &nbsp;·&nbsp; ${
           (data.blockingChecks || []).length ? `blocked by: ${esc(data.blockingChecks.join(', '))}` : 'every required check passed'}</div>
       </div>
     </div>
-    ${mutate.badTerm ? '<div class="callout warn"><strong>Simulated:</strong> the repayment amount and maturity were altered from what the contract encodes. Note that the contract\'s signatures are still valid — it is a perfectly sound DLC for <em>different terms</em>, which is precisely what this check exists to catch.</div>' : ''}
+    ${mutate.badTerm ? '<div class="callout warn"><strong>Simulated:</strong> the repayment amount and maturity were altered from what the contract encodes. Note that the contract\'s signatures are still valid. It is a perfectly sound DLC for <em>different terms</em>, which is precisely what this check exists to catch.</div>' : ''}
     ${mutate.badOracle ? '<div class="callout warn"><strong>Simulated:</strong> the expected oracle key was replaced. The contract remains cryptographically valid; only the identity of the oracle it trusts is wrong.</div>' : ''}
   `;
 
@@ -493,7 +493,7 @@ async function render(data, request, mutate) {
 
   const attestation = `
     <div class="subhead"><span class="subhead-label">How your lending partner verifies this</span><div class="subhead-line"></div></div>
-    <div class="callout">Turnkey's model is two proofs. An <strong>app proof</strong> is the enclave's signature over this verdict. A <strong>boot proof</strong> ties the signing key to an enclave whose code you can check. The partner needs both — the demo does step 1 for real and shows the rest.</div>
+    <div class="callout">Turnkey's model is two proofs. An <strong>app proof</strong> is the enclave's signature over this verdict. A <strong>boot proof</strong> ties the signing key to an enclave whose code you can check. The partner needs both. This demo does step 1 for real and shows the rest.</div>
     <table class="checks" style="margin-top:12px">
       ${chain.map((s) => {
         const [cls, text] = stateBadge[s.state];
@@ -510,7 +510,7 @@ async function render(data, request, mutate) {
     ${profile === 'morpho_midnight'
       ? '<div class="callout">The <code>termsDigest</code> lets the Midnight contracts bind minting to exactly the terms verified here, rather than re-deriving them and hoping they agree.</div>'
       : ''}
-    <div class="callout warn"><strong>Implementing steps 2–4:</strong> use Turnkey's verifiers rather than writing your own — <code>turnkey_proofs</code> in Rust, or <code>@turnkey/crypto</code>'s <code>proof.ts</code> in the browser. Until they are wired up, read the check above as <em>signature integrity</em>, not as attestation.</div>
+    <div class="callout warn"><strong>Implementing steps 2 to 4:</strong> use Turnkey's verifiers rather than writing your own: <code>turnkey_proofs</code> in Rust, or <code>@turnkey/crypto</code>'s <code>proof.ts</code> in the browser. Until they are wired up, read the check above as <em>signature integrity</em>, not as attestation.</div>
   `;
 
   const contract = `
