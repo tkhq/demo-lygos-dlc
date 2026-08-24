@@ -455,16 +455,62 @@ async function render(data, request, mutate) {
     ${mutate.badOracle ? '<div class="callout warn"><strong>Simulated:</strong> the expected oracle key was replaced. The contract remains cryptographically valid; only the identity of the oracle it trusts is wrong.</div>' : ''}
   `;
 
+  // The verification a lending partner performs. Step 1 genuinely runs in this browser;
+  // steps 2-4 are the boot-proof half, shown as the steps they are rather than faked.
+  const chain = [
+    {
+      n: 1,
+      title: 'Verify the app proof signature',
+      state: proofOk ? 'live-pass' : (proofOk === false ? 'live-fail' : 'live-unknown'),
+      body: `This runs in your browser right now. The enclave signed the canonical JSON of the verdict with its ephemeral key; WebCrypto checks that signature over the exact bytes returned. Establishes that <strong>the holder of this key produced this verdict and nothing altered it</strong>.`,
+    },
+    {
+      n: 2,
+      title: 'Fetch the boot proof for this enclave',
+      state: 'todo',
+      body: `A boot proof is the AWS Nitro attestation document plus the signed QOS manifest, produced by the platform when the enclave boots. It states the enclave's PCR measurements and carries the ephemeral public key in its <code>public_key</code> field.`,
+    },
+    {
+      n: 3,
+      title: 'Confirm the boot proof binds this key',
+      state: 'todo',
+      body: `Check <code>bootProof.public_key</code> equals the <code>publicKey</code> in the app proof above. <strong>This is the join</strong>: without it the signature is just a signature, and with it the verdict is tied to a specific attested enclave.`,
+    },
+    {
+      n: 4,
+      title: 'Check the measurements are the code you approved',
+      state: 'todo',
+      body: `Verify the document chains to the AWS Nitro root, then compare its PCRs and the manifest's application digest against values you hold independently. Taking the expected values from the same server that supplied the document would prove only that <em>some</em> enclave is running <em>something</em>.`,
+    },
+  ];
+
+  const stateBadge = {
+    'live-pass': ['pass', 'VERIFIED HERE'],
+    'live-fail': ['fail', 'FAILED HERE'],
+    'live-unknown': ['unk', 'NOT CHECKED'],
+    'todo': ['skip', 'NOT IN THIS DEMO'],
+  };
+
   const attestation = `
-    <div class="subhead"><span class="subhead-label">Enclave attestation</span><div class="subhead-line"></div></div>
-    ${kv('Signature over this verdict', proofText, proofOk ? 'ok' : (proofOk === false ? 'bad' : ''))}
+    <div class="subhead"><span class="subhead-label">How your lending partner verifies this</span><div class="subhead-line"></div></div>
+    <div class="callout">Turnkey's model is two proofs. An <strong>app proof</strong> is the enclave's signature over this verdict. A <strong>boot proof</strong> ties the signing key to an enclave whose code you can check. The partner needs both — the demo does step 1 for real and shows the rest.</div>
+    <table class="checks" style="margin-top:12px">
+      ${chain.map((s) => {
+        const [cls, text] = stateBadge[s.state];
+        return `<tr>
+          <td style="width:1%"><span class="badge ${cls}">${text}</span></td>
+          <td><div class="check-label"><strong>${s.n}. ${esc(s.title)}</strong></div>
+              <div class="check-detail" style="font-style:normal">${s.body}</div></td>
+        </tr>`;
+      }).join('')}
+    </table>
+    ${kv('App proof signature', proofText, proofOk ? 'ok' : (proofOk === false ? 'bad' : ''))}
+    ${kv('Enclave public key (bind to boot proof)', (data.proof||{}).publicKey)}
     ${kv('Terms digest', data.termsDigest, 'hl')}
-    ${kv('Enclave public key', (data.proof||{}).publicKey)}
-    <div class="callout"><strong>What the signature proves:</strong> the holder of the key below produced this exact verdict, and nothing altered it afterwards. ${
-      profile === 'morpho_midnight'
-        ? 'The <code>termsDigest</code> lets the Midnight contracts bind minting to exactly the terms verified here, instead of re-deriving them and hoping they agree.'
-        : 'Any change to the verdict breaks the signature.'}</div>
-    <div class="callout warn"><strong>What it does not prove:</strong> that this key belongs to an enclave running this reviewed code. That step pairs this <em>app proof</em> with a <em>boot proof</em> — the attestation document binding the key to the enclave's measurements — and is <strong>not implemented in this demo</strong>. Read the check above as signature integrity, not as attestation.</div>
+    ${profile === 'morpho_midnight'
+      ? '<div class="callout">The <code>termsDigest</code> lets the Midnight contracts bind minting to exactly the terms verified here, rather than re-deriving them and hoping they agree.</div>'
+      : ''}
+    <div class="callout warn"><strong>Implementing steps 2–4:</strong> use Turnkey's verifiers rather than writing your own — <code>turnkey_proofs</code> in Rust, or <code>@turnkey/crypto</code>'s <code>proof.ts</code> in the browser. Until they are wired up, read the check above as <em>signature integrity</em>, not as attestation.</div>
   `;
 
   const contract = `

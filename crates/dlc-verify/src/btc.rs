@@ -162,19 +162,8 @@ pub async fn check_inclusion(
         (false, _, _) => Some(0),
     };
 
-    let funding_output_value = expected_funding_spk.map(|spk| {
-        let spk = spk.to_lowercase();
-        tx.vout
-            .iter()
-            .filter(|out| out.scriptpubkey.to_lowercase() == spk)
-            .map(|out| out.value)
-            .sum()
-    });
-    let funding_output_match = match (funding_output_value, expected_value) {
-        (Some(found), Some(expected)) => Some(found == expected),
-        (Some(found), None) => Some(found > 0),
-        (None, _) => None,
-    };
+    let (funding_output_value, funding_output_match) =
+        match_funding_output(&tx.vout, expected_funding_spk, expected_value);
 
     Ok(Inclusion {
         txid,
@@ -186,6 +175,38 @@ pub async fn check_inclusion(
         funding_output_match,
         funding_output_value,
     })
+}
+
+/// Work out how much of a transaction pays the contract's funding script, and whether that
+/// is the amount the contract expects.
+///
+/// This is what ties an arbitrary confirmed transaction to *this* contract. Without it, the
+/// on-chain check only shows that some transaction confirmed, which is not the same as the
+/// collateral being locked.
+///
+/// Outputs are summed rather than matched individually, so a transaction that splits the
+/// collateral across two outputs to the same script still adds up correctly.
+fn match_funding_output(
+    vout: &[EsploraVout],
+    expected_spk: Option<&str>,
+    expected_value: Option<u64>,
+) -> (Option<u64>, Option<bool>) {
+    let Some(expected_spk) = expected_spk else {
+        return (None, None);
+    };
+    let expected_spk = expected_spk.to_lowercase();
+    let paid: u64 = vout
+        .iter()
+        .filter(|out| out.scriptpubkey.to_lowercase() == expected_spk)
+        .map(|out| out.value)
+        .sum();
+    let matched = match expected_value {
+        Some(expected) => paid == expected,
+        // No expected amount to compare against, so the most that can be said is that the
+        // script was paid at all.
+        None => paid > 0,
+    };
+    (Some(paid), Some(matched))
 }
 
 /// GET a URL and decode JSON, mapping a 404 to [`InclusionError::NotFound`].
@@ -261,6 +282,70 @@ mod tests {
         assert!(normalize_txid(&"z".repeat(64)).is_err());
         assert!(normalize_txid(&"a".repeat(63)).is_err());
         assert!(normalize_txid(&"a".repeat(65)).is_err());
+    }
+
+    fn vout(spk: &str, value: u64) -> EsploraVout {
+        EsploraVout {
+            scriptpubkey: spk.to_string(),
+            value,
+        }
+    }
+
+    /// The check that makes an on-chain result mean something: does this transaction
+    /// actually pay *this* contract's collateral?
+    #[test]
+    fn a_transaction_paying_the_contract_the_right_amount_matches() {
+        let outs = vec![vout("0020aabb", 11_470), vout("0014cccc", 32_020)];
+        let (paid, matched) = match_funding_output(&outs, Some("0020aabb"), Some(11_470));
+        assert_eq!(paid, Some(11_470));
+        assert_eq!(matched, Some(true));
+    }
+
+    #[test]
+    fn an_unrelated_transaction_does_not_match() {
+        // Nothing pays the contract's script — the demo's stand-in transaction looks
+        // exactly like this, which is why it reports a mismatch.
+        let outs = vec![vout("0014dead", 200_000), vout("0014beef", 177_768)];
+        let (paid, matched) = match_funding_output(&outs, Some("0020aabb"), Some(11_470));
+        assert_eq!(paid, Some(0));
+        assert_eq!(matched, Some(false));
+    }
+
+    #[test]
+    fn paying_the_right_script_the_wrong_amount_does_not_match() {
+        let outs = vec![vout("0020aabb", 9_999)];
+        assert_eq!(
+            match_funding_output(&outs, Some("0020aabb"), Some(11_470)).1,
+            Some(false),
+            "underfunded collateral must not read as funded"
+        );
+    }
+
+    #[test]
+    fn collateral_split_across_outputs_is_summed() {
+        let outs = vec![vout("0020aabb", 5_000), vout("0020aabb", 6_470)];
+        assert_eq!(
+            match_funding_output(&outs, Some("0020aabb"), Some(11_470)).1,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn script_comparison_ignores_case() {
+        let outs = vec![vout("0020AABB", 11_470)];
+        assert_eq!(
+            match_funding_output(&outs, Some("0020aabb"), Some(11_470)).1,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn no_expected_script_means_no_verdict_rather_than_a_pass() {
+        let outs = vec![vout("0020aabb", 11_470)];
+        assert_eq!(
+            match_funding_output(&outs, None, Some(11_470)),
+            (None, None)
+        );
     }
 
     #[test]

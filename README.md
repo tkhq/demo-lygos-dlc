@@ -196,35 +196,47 @@ To check the signature: `publicKey` is two concatenated uncompressed P-256 point
 **second** is the signing key. The signature is raw `r||s`, and the signed message is `payload`
 verbatim. `frontend/index.html` does this with WebCrypto in about fifteen lines.
 
-### What the signature alone does and does not show
+### How the lending partner verifies — app proofs and boot proofs
 
-Verifying it shows that *the holder of that key* produced this exact verdict, and that nothing
-altered the verdict afterwards. It does **not** by itself show that the key belongs to an enclave
-running this reviewed code — any server holding a key could produce a self-consistent signature.
+This is the part Lygos's institutional lending partner implements, and the shape worth taking
+away from the demo. Turnkey's model is two proofs:
 
-Turnkey's model closes that gap with a **boot proof**: an AWS Nitro attestation document plus the
-signed QOS manifest, produced by the platform at boot, whose `public_key` field is the enclave's
-ephemeral key. The full check is:
+- an **app proof** — the enclave's P-256 signature over the verdict, which is what this service
+  returns;
+- a **boot proof** — the AWS Nitro attestation document plus the signed QOS manifest, produced by
+  the platform at boot, which states the enclave's PCR measurements and carries the ephemeral
+  public key in its `public_key` field.
 
-1. Obtain a valid boot proof and confirm the app proof's `publicKey` equals its `public_key` field.
-2. Verify the app proof signature (plain P-256), which the frontend already does.
-3. Parse the payload.
+Neither is sufficient alone. The signature says the holder of a key produced this verdict; the
+boot proof says which code holds that key. The partner's check is:
 
-Step 1 is what ties this verdict to attested code, and it is **not implemented here** — this demo
-stops at the app proof. Do not describe the green check in the UI as proving attestation; it
-proves signature integrity.
+| Step | What it establishes | In this demo |
+| --- | --- | --- |
+| 1. Verify the app proof signature over the verdict | the verdict came from the holder of this key and was not altered | **runs for real, in the browser** |
+| 2. Fetch the boot proof for the enclave | the measurements and the key the platform attested to | shown, not performed |
+| 3. Confirm `bootProof.public_key` equals the app proof's `publicKey` | **the join** — ties this verdict to a specific attested enclave | shown, not performed |
+| 4. Check PCRs and the application digest against independently held values | the enclave runs the code you approved | shown, not performed |
 
-Two things worth knowing if you pick this up:
+Step 4 only means something if the expected values come from somewhere other than the server that
+supplied the document. Comparing a boot proof against PCRs the same host also provided shows that
+*some* genuine enclave is running *something*, which is a much weaker statement than it looks.
 
-- **Do not have the app mint its own attestation document.** An earlier version of this repo added
-  an `/attestation` endpoint that called the Nitro Secure Module directly. That is the wrong
-  mechanism: the boot proof already exists and already binds the ephemeral key, and an enclave
-  vouching for itself proves nothing anyway. It was reverted.
-- **Use the official verifiers,** not a hand-rolled one:
-  [`turnkey_proofs`](https://github.com/tkhq/rust-sdk/tree/main/proofs) in Rust and
-  [`proof.ts`](https://github.com/tkhq/sdk/tree/main/packages/crypto/src/proof.ts) in TypeScript.
-  The TypeScript one matters here, because it means in-browser boot-proof verification is largely
-  a solved problem rather than a COSE reimplementation.
+Use Turnkey's verifiers rather than writing your own:
+[`turnkey_proofs`](https://github.com/tkhq/rust-sdk/tree/main/proofs) in Rust, and
+[`proof.ts`](https://github.com/tkhq/sdk/tree/main/packages/crypto/src/proof.ts) in TypeScript —
+the latter means in-browser boot-proof verification is largely solved rather than a COSE
+reimplementation.
+
+**One open question to resolve with Turnkey.** For a *TVC app* it is not obvious how a client
+retrieves the boot proof. Neither `tvc` nor the `turnkey` CLI exposes a command for it, and the
+deployed app serves no such endpoint — the documented flow covers Turnkey's own enclaves. The
+partner needs a supported way to fetch it, so this is worth settling before they build step 2.
+
+**Do not have the app mint its own attestation document.** An earlier version of this repo added
+an `/attestation` endpoint calling the Nitro Secure Module directly. That is the wrong mechanism:
+the boot proof already exists and already binds the ephemeral key, and an enclave vouching for
+itself proves nothing regardless. It was reverted.
+
 
 ## Running locally
 
