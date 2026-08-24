@@ -15,8 +15,12 @@ use crate::terms::ExpectedTerms;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct VerifyRequest {
     /// Which use case to evaluate for. Decides what is allowed to block the verdict.
+    ///
+    /// `Option` rather than a defaulted `Profile` so an explicit choice can be told apart
+    /// from no choice. Collapsing the two means a caller who asks for one profile can be
+    /// silently reported under another, which is worse than picking a default.
     #[serde(default)]
-    profile: Profile,
+    profile: Option<Profile>,
     /// Hex-encoded `DlcOffer`.
     offer_hex: String,
     /// Hex-encoded `DlcAccept`.
@@ -110,7 +114,18 @@ pub(crate) async fn verify_contract(
     );
 
     let terms = request.resolved_terms();
-    attest(&state, decision::decide(request.profile, dlc, &terms, None)).map(Json)
+    // This endpoint performs no I/O, so there is no on-chain result to weigh. `decide`
+    // reflects that as "not applicable here" rather than as an unmet requirement.
+    attest(
+        &state,
+        decision::decide(
+            request.profile.unwrap_or_default(),
+            dlc,
+            &terms,
+            decision::Onchain::NotRequested,
+        ),
+    )
+    .map(Json)
 }
 
 /// Verify a contract and confirm its collateral is locked on chain.
@@ -122,13 +137,11 @@ pub(crate) async fn verify_loan(
     State(state): State<AppState>,
     Json(request): Json<VerifyRequest>,
 ) -> Result<Json<AttestedDecision>, AppError> {
-    // Default to the cross-chain profile here: this endpoint exists because the caller
-    // wants the on-chain evidence, so funding should gate unless they say otherwise.
-    let profile = if request.profile == Profile::default() && request.btc_txid.is_some() {
-        Profile::MorphoMidnight
-    } else {
-        request.profile
-    };
+    // A caller reaching this endpoint wants the chain consulted, so default to the
+    // cross-chain profile when they expressed no preference — but never override a profile
+    // they actually asked for. Relabelling their request would make the report describe a
+    // different use case than the one they ran.
+    let profile = request.profile.unwrap_or(Profile::MorphoMidnight);
 
     let dlc = verify::verify_dlc(
         &request.offer_hex,
@@ -179,7 +192,13 @@ pub(crate) async fn verify_loan(
     };
 
     let terms = request.resolved_terms();
-    attest(&state, decision::decide(profile, dlc, &terms, inclusion)).map(Json)
+    let onchain = match inclusion {
+        Some(result) => decision::Onchain::Looked(result),
+        // No txid supplied and none derivable, on an endpoint whose whole purpose is the
+        // chain check. That is a missing input, not a check that does not apply.
+        None => decision::Onchain::NoTransaction,
+    };
+    attest(&state, decision::decide(profile, dlc, &terms, onchain)).map(Json)
 }
 
 /// Sign a decision with the enclave's ephemeral key.

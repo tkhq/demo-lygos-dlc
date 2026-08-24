@@ -190,14 +190,19 @@
       </div>
       <div class="callout warn">These drive the <strong>event-id recomputation</strong>, which ties the DLC to the loan terms themselves. The derivation here is a <strong>documented placeholder, not Lygos's rule</strong>, so it reports no verdict — but changing any parameter visibly changes the derived id, which is exactly why the real check is worth having. Use <em>Alter a loan term</em> below to see it.</div>
 
-      <!-- Midnight only -->
-      <div class="uc-only" id="only-midnight">
+      <!-- Both use cases: a lender advancing funds needs the collateral confirmed too. -->
+      <div>
         <div class="subhead"><span class="subhead-label">Bitcoin collateral</span><div class="subhead-line"></div></div>
+        <div class="callout" id="collateral-note"></div>
         <div class="grid2">
           <div><label class="fl" for="txid">Collateral transaction id</label><input type="text" id="txid" /></div>
           <div><label class="fl" for="btcnet">Bitcoin network</label>
             <select id="btcnet"><option value="testnet">testnet</option><option value="mainnet">mainnet</option></select></div>
         </div>
+      </div>
+
+      <!-- Midnight only -->
+      <div class="uc-only" id="only-midnight">
         <div class="subhead"><span class="subhead-label">EVM-side terms</span><div class="subhead-line"></div></div>
         <div class="grid2">
           <div><label class="fl" for="e-position">Position</label><input type="text" id="e-position" /></div>
@@ -241,16 +246,18 @@ const DEMO_TXID = 'dcf70d60370559665cc45b66841a2aab6d755b1df38a823bbbc8d38dd05db
 
 const COPY = {
   institutional_lender: {
-    inputTitle: 'Loan contract and expected terms',
-    inputDesc: 'Lygos gives you the offer, accept and sign messages. You supply the terms you agreed to. The enclave confirms the contract actually encodes them.',
+    inputTitle: 'Loan contract, agreed terms, and collateral',
+    inputDesc: 'Lygos gives you the offer, accept and sign messages. You supply the terms you agreed to. The enclave confirms the contract encodes them and that the borrower\'s collateral is locked on Bitcoin — checking the chain itself, so you are not taking anyone\'s word for it.',
     outTitle: 'Decoded loan report',
-    outDesc: 'A pass/fail you can rely on before advancing funds, with every term checked against the contract.',
+    outDesc: 'A pass/fail you can rely on before advancing funds, with every term checked against the contract and the collateral confirmed on chain.',
+    collateralNote: 'Leave this blank to review terms before the borrower has posted collateral — the report will say the collateral was not checked rather than implying it passed.',
   },
   morpho_midnight: {
     inputTitle: 'Loan contract, expected terms, and collateral',
     inputDesc: 'The same verification, plus confirmation that the Bitcoin collateral is funded — the enclave queries Bitcoin itself over egress.',
     outTitle: 'Signed attestation',
     outDesc: 'What the Midnight contracts consume before minting a collateral representation: the verdict, the terms digest, and the enclave signature over both.',
+    collateralNote: 'Required: a collateral representation cannot be minted against collateral that is not confirmed on chain.',
   },
 };
 
@@ -266,6 +273,7 @@ function setProfile(next) {
   $('uc-midnight').classList.toggle('active', next === 'morpho_midnight');
   $('only-midnight').style.display = next === 'morpho_midnight' ? 'block' : 'none';
   const c = COPY[next];
+  $('collateral-note').textContent = c.collateralNote;
   $('input-title').textContent = c.inputTitle;
   $('input-desc').textContent = c.inputDesc;
   $('out-title').textContent = c.outTitle;
@@ -347,12 +355,20 @@ function buildRequest(mutate) {
     expected,
   };
   if (str('sign')) body.signHex = str('sign');
+  if (str('txid')) body.btcTxid = str('txid');
+  body.bitcoinNetwork = $('btcnet').value;
   if (profile === 'morpho_midnight') {
-    if (str('txid')) body.btcTxid = str('txid');
-    body.bitcoinNetwork = $('btcnet').value;
     expected.evm = { position: str('e-position'), collateralSats: num('e-collateral') };
   }
   return body;
+}
+
+/// Which endpoint to call. The chain is consulted whenever a collateral transaction is on
+/// offer, whichever use case is running — a lender advancing funds needs it as much as the
+/// minting side. Only a lender reviewing terms before collateral exists skips it.
+function endpointFor(profile, body) {
+  if (body.btcTxid) return '/dlc/verify_loan';
+  return profile === 'morpho_midnight' ? '/dlc/verify_loan' : '/dlc/verify';
 }
 
 async function run(mutate) {
@@ -361,8 +377,8 @@ async function run(mutate) {
   $('results-body').innerHTML = '<div class="loading">Verifying inside the enclave&#8230;</div>';
   for (const b of ['run','run-badterm','run-badoracle']) $(b).disabled = true;
 
-  const endpoint = profile === 'morpho_midnight' ? '/dlc/verify_loan' : '/dlc/verify';
   const body = buildRequest(mutate);
+  const endpoint = endpointFor(profile, body);
   try {
     const resp = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
@@ -466,7 +482,7 @@ async function render(data, request, mutate) {
     ${(d.outcomes||[]).map(o => kv(o.label, `borrower ${o.offererSats} sat · lender ${o.accepterSats} sat`)).join('')}
   `;
 
-  const collateral = profile !== 'morpho_midnight' ? '' : `
+  const collateral = `
     <div class="subhead"><span class="subhead-label">Bitcoin collateral</span><div class="subhead-line"></div></div>
     ${b ? `
       ${kv('Transaction', b.txid)}

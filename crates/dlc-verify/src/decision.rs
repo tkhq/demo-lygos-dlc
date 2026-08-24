@@ -18,6 +18,15 @@ use crate::event_id;
 use crate::terms::ExpectedTerms;
 
 /// Which use case a request is for.
+///
+/// The profile shapes how a report reads, and decides one thing about gating: whether a
+/// verdict may be reached *without consulting the chain at all*. Minting a collateral
+/// representation cannot be, so Morpho Midnight always needs funding confirmed. A lender may
+/// legitimately review terms before the borrower has posted collateral, so a term-only check
+/// is a valid answer for them.
+///
+/// Once the chain *is* consulted, funding gates for both: a lender advancing money against
+/// Bitcoin collateral needs it locked just as much as the minting side does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Profile {
@@ -32,10 +41,13 @@ pub enum Profile {
 }
 
 impl Profile {
-    /// Whether this profile requires the collateral to be confirmed on chain.
+    /// Whether this use case can be satisfied without consulting the chain.
+    ///
+    /// Only true for a lender doing a pre-collateral term review. Minting always needs the
+    /// collateral confirmed.
     #[must_use]
-    pub fn requires_onchain_funding(self) -> bool {
-        matches!(self, Self::MorphoMidnight)
+    pub fn allows_term_only_verdict(self) -> bool {
+        matches!(self, Self::InstitutionalLender)
     }
 
     /// A short description for a report.
@@ -65,6 +77,23 @@ pub enum FailureReason {
     ExplorerRequestFailed,
     /// A check this profile requires could not be answered either way.
     CheckNotVerifiable,
+}
+
+/// What happened with the on-chain collateral check.
+///
+/// Three states rather than an `Option`, because "this endpoint does not consult the chain"
+/// and "we were asked to and had nothing to look up" are different situations and must not
+/// produce the same verdict. Flattening them is how a lender gets a pass on a loan whose
+/// collateral was never checked.
+pub enum Onchain {
+    /// The caller used an endpoint that performs no chain lookup, so the check does not
+    /// apply. Never blocks.
+    NotRequested,
+    /// A lookup was expected but no transaction was supplied or derivable. Blocks wherever
+    /// funding is required.
+    NoTransaction,
+    /// The chain was consulted.
+    Looked(Result<Inclusion, InclusionError>),
 }
 
 /// Overall verdict.
@@ -114,7 +143,7 @@ pub fn decide(
     profile: Profile,
     dlc: DlcVerification,
     expected: &ExpectedTerms,
-    inclusion: Option<Result<Inclusion, InclusionError>>,
+    onchain: Onchain,
 ) -> Decision {
     let mut checks = Vec::new();
     let mut reasons = Vec::new();
@@ -193,30 +222,53 @@ pub fn decide(
         checks.extend(expected.compare(&dlc));
     }
 
-    // On-chain funding.
-    let (bitcoin, bitcoin_error) = match inclusion {
-        None => {
+    // On-chain funding. Both use cases care: a lender advancing money against Bitcoin
+    // collateral needs it locked just as much as the minting side does, so this is required
+    // wherever the chain was actually consulted.
+    let (bitcoin, bitcoin_error) = match onchain {
+        Onchain::NotRequested => {
+            // A lender may be reviewing terms before collateral exists, which is a real
+            // answer. Minting cannot proceed on that basis, so for the cross-chain profile
+            // an unconsulted chain is a missing requirement rather than a non-applicable one.
+            let severity = if profile.allows_term_only_verdict() {
+                Severity::Informational
+            } else {
+                Severity::Required
+            };
             checks.push(
                 Check::new(
                     "onchain_funding",
                     "Collateral confirmed on Bitcoin",
                     CheckStatus::NotChecked,
-                    if profile.requires_onchain_funding() {
-                        Severity::Required
-                    } else {
-                        Severity::Informational
-                    },
+                    severity,
                 )
-                .with_detail("no collateral transaction was supplied or derived"),
+                .with_detail(
+                    "this endpoint does not consult the chain. Use /dlc/verify_loan to \
+                     confirm the collateral is locked before advancing funds.",
+                ),
             );
-            // For a profile that gates on funding, "we never looked" is a failure with a
-            // cause, not a failure with no explanation.
-            if profile.requires_onchain_funding() {
+            if severity == Severity::Required {
                 reasons.push(FailureReason::TxNotFound);
             }
             (None, None)
         }
-        Some(Ok(found)) => {
+        Onchain::NoTransaction => {
+            checks.push(
+                Check::new(
+                    "onchain_funding",
+                    "Collateral confirmed on Bitcoin",
+                    CheckStatus::NotChecked,
+                    Severity::Required,
+                )
+                .with_detail(
+                    "no collateral transaction was supplied, and none could be derived from \
+                     the contract, so the collateral was never checked",
+                ),
+            );
+            reasons.push(FailureReason::TxNotFound);
+            (None, None)
+        }
+        Onchain::Looked(Ok(found)) => {
             let confirmations = found.confirmations.unwrap_or(0);
             let confirmed_enough = found.confirmed && confirmations >= MIN_CONFIRMATIONS;
             checks.push(
@@ -228,11 +280,7 @@ pub fn decide(
                     } else {
                         CheckStatus::Fail
                     },
-                    if profile.requires_onchain_funding() {
-                        Severity::Required
-                    } else {
-                        Severity::Informational
-                    },
+                    Severity::Required,
                 )
                 .with_values(
                     format!("at least {MIN_CONFIRMATIONS} confirmation(s)"),
@@ -264,7 +312,7 @@ pub fn decide(
             }
             (Some(found), None)
         }
-        Some(Err(error)) => {
+        Onchain::Looked(Err(error)) => {
             let (status_detail, reason) = match &error {
                 InclusionError::NotFound => ("not found on chain", FailureReason::TxNotFound),
                 InclusionError::MalformedTxid(_) => {
@@ -280,11 +328,7 @@ pub fn decide(
                     "onchain_funding",
                     "Collateral confirmed on Bitcoin",
                     CheckStatus::Fail,
-                    if profile.requires_onchain_funding() {
-                        Severity::Required
-                    } else {
-                        Severity::Informational
-                    },
+                    Severity::Required,
                 )
                 .with_detail(format!("{status_detail}: {error}")),
             );
@@ -425,7 +469,7 @@ mod tests {
             Profile::InstitutionalLender,
             good_dlc(),
             &matching_terms(),
-            None,
+            Onchain::NotRequested,
         );
         assert_eq!(
             decision.status,
@@ -443,7 +487,12 @@ mod tests {
         for (name, decision) in [
             (
                 "midnight without funding",
-                decide(Profile::MorphoMidnight, good_dlc(), &matching_terms(), None),
+                decide(
+                    Profile::MorphoMidnight,
+                    good_dlc(),
+                    &matching_terms(),
+                    Onchain::NotRequested,
+                ),
             ),
             (
                 "lender with no expectations",
@@ -451,7 +500,7 @@ mod tests {
                     Profile::InstitutionalLender,
                     good_dlc(),
                     &ExpectedTerms::default(),
-                    None,
+                    Onchain::NotRequested,
                 ),
             ),
         ] {
@@ -471,11 +520,16 @@ mod tests {
             Profile::InstitutionalLender,
             good_dlc(),
             &matching_terms(),
-            None,
+            Onchain::NotRequested,
         );
         assert_eq!(lender.status, Status::Verified);
 
-        let midnight = decide(Profile::MorphoMidnight, good_dlc(), &matching_terms(), None);
+        let midnight = decide(
+            Profile::MorphoMidnight,
+            good_dlc(),
+            &matching_terms(),
+            Onchain::NotRequested,
+        );
         assert_eq!(midnight.status, Status::Failed);
         assert!(midnight.blocking_checks.contains(&"onchain_funding"));
     }
@@ -486,7 +540,7 @@ mod tests {
             Profile::MorphoMidnight,
             good_dlc(),
             &matching_terms(),
-            Some(Ok(confirmed(6))),
+            Onchain::Looked(Ok(confirmed(6))),
         );
         assert_eq!(
             decision.status,
@@ -502,7 +556,7 @@ mod tests {
             Profile::MorphoMidnight,
             good_dlc(),
             &matching_terms(),
-            Some(Ok(confirmed(0))),
+            Onchain::Looked(Ok(confirmed(0))),
         );
         assert_eq!(decision.status, Status::Failed);
         assert!(
@@ -516,7 +570,12 @@ mod tests {
     fn a_single_wrong_term_fails_and_is_named() {
         let mut terms = matching_terms();
         terms.liquidation.address = Some("tb1qattacker".to_string());
-        let decision = decide(Profile::InstitutionalLender, good_dlc(), &terms, None);
+        let decision = decide(
+            Profile::InstitutionalLender,
+            good_dlc(),
+            &terms,
+            Onchain::NotRequested,
+        );
 
         assert_eq!(decision.status, Status::Failed);
         assert_eq!(decision.blocking_checks, vec!["liquidation_address"]);
@@ -533,7 +592,12 @@ mod tests {
             adaptor_sigs_valid: Some(false),
             ..good_dlc()
         };
-        let decision = decide(Profile::InstitutionalLender, dlc, &matching_terms(), None);
+        let decision = decide(
+            Profile::InstitutionalLender,
+            dlc,
+            &matching_terms(),
+            Onchain::NotRequested,
+        );
 
         assert_eq!(decision.status, Status::Failed);
         assert!(
@@ -554,7 +618,12 @@ mod tests {
             accepter_refund_sig_valid: None,
             ..good_dlc()
         };
-        let decision = decide(Profile::InstitutionalLender, dlc, &matching_terms(), None);
+        let decision = decide(
+            Profile::InstitutionalLender,
+            dlc,
+            &matching_terms(),
+            Onchain::NotRequested,
+        );
         assert_eq!(decision.status, Status::Failed);
         assert!(
             decision
@@ -573,7 +642,12 @@ mod tests {
             sign_contract_id_matches: None,
             ..good_dlc()
         };
-        let decision = decide(Profile::InstitutionalLender, dlc, &matching_terms(), None);
+        let decision = decide(
+            Profile::InstitutionalLender,
+            dlc,
+            &matching_terms(),
+            Onchain::NotRequested,
+        );
         assert_eq!(
             decision.status,
             Status::Verified,
@@ -588,7 +662,7 @@ mod tests {
             Profile::InstitutionalLender,
             good_dlc(),
             &ExpectedTerms::default(),
-            None,
+            Onchain::NotRequested,
         );
         assert_eq!(
             decision.status,
@@ -607,7 +681,7 @@ mod tests {
             Profile::InstitutionalLender,
             dlc,
             &ExpectedTerms::default(),
-            None,
+            Onchain::NotRequested,
         );
         assert_eq!(decision.status, Status::Failed);
         assert_eq!(
@@ -623,7 +697,7 @@ mod tests {
             Profile::MorphoMidnight,
             good_dlc(),
             &matching_terms(),
-            Some(Err(InclusionError::ExplorerUnavailable(
+            Onchain::Looked(Err(InclusionError::ExplorerUnavailable(
                 "timeout".to_string(),
             ))),
         );
@@ -646,7 +720,12 @@ mod tests {
             loan_id: Some("loan-1".to_string()),
             ..crate::event_id::LoanTerms::default()
         };
-        let decision = decide(Profile::InstitutionalLender, good_dlc(), &terms, None);
+        let decision = decide(
+            Profile::InstitutionalLender,
+            good_dlc(),
+            &terms,
+            Onchain::NotRequested,
+        );
 
         // It is reported, and it has no verdict, but it must not fail the loan.
         let check = decision
@@ -670,7 +749,7 @@ mod tests {
             Profile::MorphoMidnight,
             good_dlc(),
             &terms,
-            Some(Ok(confirmed(6))),
+            Onchain::Looked(Ok(confirmed(6))),
         );
         assert_eq!(
             decision.status,
@@ -678,5 +757,82 @@ mod tests {
             "{:?}",
             decision.blocking_checks
         );
+    }
+
+    /// The case this whole design exists for: a lending partner advancing money against
+    /// Bitcoin collateral. Once they ask for the chain to be consulted, unconfirmed
+    /// collateral must block — being a lender does not make it optional.
+    #[test]
+    fn a_lender_who_consults_the_chain_is_gated_on_confirmed_collateral() {
+        let unconfirmed = decide(
+            Profile::InstitutionalLender,
+            good_dlc(),
+            &matching_terms(),
+            Onchain::Looked(Ok(confirmed(0))),
+        );
+        assert_eq!(unconfirmed.status, Status::Failed);
+        assert!(unconfirmed.blocking_checks.contains(&"onchain_funding"));
+
+        let confirmed_enough = decide(
+            Profile::InstitutionalLender,
+            good_dlc(),
+            &matching_terms(),
+            Onchain::Looked(Ok(confirmed(3))),
+        );
+        assert_eq!(
+            confirmed_enough.status,
+            Status::Verified,
+            "{:?}",
+            confirmed_enough.blocking_checks
+        );
+    }
+
+    /// Asking for a chain check and having nothing to look up is not the same as not asking.
+    /// It must never read as a pass for either use case.
+    #[test]
+    fn a_missing_collateral_transaction_blocks_both_use_cases() {
+        for profile in [Profile::InstitutionalLender, Profile::MorphoMidnight] {
+            let decision = decide(
+                profile,
+                good_dlc(),
+                &matching_terms(),
+                Onchain::NoTransaction,
+            );
+            assert_eq!(
+                decision.status,
+                Status::Failed,
+                "{:?} should not pass without a collateral transaction",
+                profile
+            );
+            assert!(decision.blocking_checks.contains(&"onchain_funding"));
+            assert!(!decision.failure_reasons.is_empty());
+        }
+    }
+
+    /// A term-only review is a legitimate answer for a lender before collateral is posted,
+    /// but never for minting a collateral representation.
+    #[test]
+    fn only_a_lender_may_reach_a_verdict_without_consulting_the_chain() {
+        let lender = decide(
+            Profile::InstitutionalLender,
+            good_dlc(),
+            &matching_terms(),
+            Onchain::NotRequested,
+        );
+        assert_eq!(
+            lender.status,
+            Status::Verified,
+            "{:?}",
+            lender.blocking_checks
+        );
+
+        let midnight = decide(
+            Profile::MorphoMidnight,
+            good_dlc(),
+            &matching_terms(),
+            Onchain::NotRequested,
+        );
+        assert_eq!(midnight.status, Status::Failed);
+        assert!(midnight.blocking_checks.contains(&"onchain_funding"));
     }
 }

@@ -39,11 +39,19 @@ request decides what is allowed to block the verdict; the cryptography is identi
 
 ### Institutional lender
 
-Lygos hands the lender the offer, accept and sign messages. The lender supplies the terms it
-agreed to — lender key, oracle key and event id, repayment and liquidation destinations, refund
-address and locktime, maturity, collateral, payouts. The enclave confirms the contract is
-cryptographically sound **and** that it encodes those terms, and returns a decoded report the
-lender can rely on before advancing funds. No chain lookup: the collateral need not be posted yet.
+For a lending partner independently checking every loan they advance against, without taking
+Lygos's word for any of it.
+
+Lygos hands them the offer, accept and sign messages. They supply the terms they agreed to —
+lender key, oracle key and event id, repayment and liquidation destinations, refund address and
+locktime, maturity, collateral, payouts. The enclave confirms the contract is cryptographically
+sound, that it encodes those terms, and that the borrower's collateral is locked on Bitcoin,
+querying the chain from inside the enclave rather than trusting a figure it was handed.
+
+Supplying a collateral transaction is optional but gates the verdict when present: a lender may
+legitimately review terms before the borrower has posted collateral, and the report then says the
+collateral was **not checked** rather than implying it passed. Once the chain is consulted,
+unconfirmed collateral blocks — being the lender does not make that check optional.
 
 ### Morpho Midnight
 
@@ -142,9 +150,19 @@ curl -X POST "$BASE/dlc/verify_loan" -H 'content-type: application/json' -d '{
 }'
 ```
 
-`profile` is `institutional_lender` (the default) or `morpho_midnight`. Everything under
-`expected` is optional, but a request with no expectations at all fails rather than reporting a
-verdict it cannot support.
+`profile` is `institutional_lender` or `morpho_midnight`, and is **never overridden** — a report
+always describes the use case that was asked for. Omitting it defaults to `institutional_lender`
+on `/dlc/verify` and `morpho_midnight` on `/dlc/verify_loan`.
+
+Everything under `expected` is optional, but a request with no expectations at all fails rather
+than reporting a verdict it cannot support.
+
+The two endpoints differ only in whether the chain is consulted, not in how strict they are.
+Use `/dlc/verify_loan` whenever a collateral transaction matters — including as a lender, since
+confirming the borrower's collateral is locked is the point of advancing against it. `/dlc/verify`
+performs no I/O, so it can only ever answer the term-and-cryptography half; it reports the
+collateral as `not_checked`, and for `morpho_midnight` that is a blocking omission rather than an
+acceptable answer.
 
 Omit `btcTxid` and the app checks the fund transaction it derived from the contract, which is the production behaviour. Omit `expectedOraclePubkey` and the oracle-identity check is skipped rather than assumed.
 
