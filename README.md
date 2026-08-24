@@ -7,8 +7,9 @@
 > verify the result. It is illustrative code, not a product.
 >
 > **It is unsupported.** No SLA, no uptime commitment, no maintenance promise, no security
-> contact. The deployment sits on Turnkey's **dev** environment and can be deleted or redeployed
-> without notice. Nothing here is covered by any agreement you have with Turnkey.
+> contact. It can be redeployed or removed without notice. Running on Turnkey's production
+> infrastructure does not make it production-ready, and nothing here is covered by any agreement
+> you have with Turnkey.
 >
 > **It has not been audited or reviewed for security** by Turnkey or anyone else.
 >
@@ -338,7 +339,7 @@ Then open `frontend/index.html`. It points at `http://127.0.0.1:44020` by defaul
 elsewhere:
 
 ```sh
-cd frontend && TVC_APP_URL=https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering ./build.sh
+cd frontend && TVC_APP_URL=https://app-<APP_ID>.turnkey.cloud ./build.sh
 ```
 
 `make run` generates throwaway keys in `/tmp/tvc-template-local-enclave`, so proofs verify against a
@@ -374,9 +375,13 @@ One-time setup. Note that `enableEgress` and debug mode **cannot be added to an 
 
 ```sh
 cargo install tvc --locked   # 0.14.0 or newer, see below
-tvc login --api-base-url https://api.dev.turnkey.engineering
+tvc login                    # defaults to production, https://api.turnkey.com
 tvc app create --config-file tvc-configs/app.json   # record the app id and operator id
 ```
+
+Production runs in the Solutions org and dev in Connor Dev, so `tvc login` has to point at the
+right one before any command. `tvc-configs/` holds a config pair per environment, and
+`tvc-configs/README.md` has the identifiers.
 
 `tvc-configs/app.json` targets **tvc >= 0.14.0**. An older CLI names these fields differently
 (`externalConnectivity` for egress, `debugMode` on the deployment) and has no app-level debug field
@@ -391,9 +396,10 @@ URL** and **Expected Executable Digest** from its summary, and deploy them.
 OPERATOR_ID=<operator-id> ./tvc-configs/deploy-latest.sh
 ```
 
-The app URL is stable at `https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering`, so only the
-deployment changes. Delete the superseded deployment once the new one serves traffic, otherwise it
-is ambiguous which build answered a request.
+The app URL is stable at `https://app-<APP_ID>.turnkey.cloud` on production and
+`https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering` on dev, so only the deployment changes.
+Delete the superseded deployment once the new one serves traffic, otherwise it is ambiguous which
+build answered a request.
 
 Worth knowing:
 

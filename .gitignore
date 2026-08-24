@@ -3,3 +3,12 @@ out
 target
 *.log
 local-enclave
+
+# Credentials. `--pivot-pull-secret` takes a file holding a GitHub PAT in
+# cleartext, and the README tells you to create one, so keep it uncommittable.
+.env
+.env.*
+pull-secret*.json
+*.pem
+*.p12
+*.key

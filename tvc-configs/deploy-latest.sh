@@ -7,6 +7,8 @@
 set -euo pipefail
 
 REPO="${REPO:-tkhq/lygos-dlc-demo}"
+# Defaults to the production config. Pass CONFIG=.../deploy.dev.json to target dev,
+# and remember that the two use different orgs, so `tvc login` has to match.
 CONFIG="${CONFIG:-$(dirname "$0")/deploy.json}"
 OPERATOR_ID="${OPERATOR_ID:?set OPERATOR_ID (see README.md in this directory)}"
 

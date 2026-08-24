@@ -1,7 +1,7 @@
 {
-  "appId": "35e626e0-958b-48de-8ed9-e57dbf08fe41",
+  "appId": "REPLACE_WITH_PROD_APP_ID",
   "qosVersion": "0.12.1",
-  "pivotContainerImageUrl": "ghcr.io/tkhq/dlc-verify:pr-1@sha256:acc8faef17a90709a0217d80f337473823ddd09f22fed89f5bbb049785817129",
+  "pivotContainerImageUrl": "REPLACE_EACH_PASS_FROM_CI",
   "pivotPath": "/tvc_app",
   "pivotArgs": [
     "--host",
@@ -9,7 +9,7 @@
     "--port",
     "3000"
   ],
-  "expectedPivotDigest": "23353d1ffa62c47f36403bb3a8ee1afa27042c8e0a38f5dbb9470ba99932a3f3",
+  "expectedPivotDigest": "REPLACE_EACH_PASS_FROM_CI",
   "dangerousDeployDebugMode": false,
   "healthCheckType": "TVC_HEALTH_CHECK_TYPE_HTTP",
   "healthCheckPort": 3000,
