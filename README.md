@@ -259,14 +259,7 @@ supplied the document. Comparing a boot proof against PCRs the same host also pr
 
 Use Turnkey's verifiers rather than writing your own:
 [`turnkey_proofs`](https://github.com/tkhq/rust-sdk/tree/main/proofs) in Rust, and
-[`proof.ts`](https://github.com/tkhq/sdk/tree/main/packages/crypto/src/proof.ts) in TypeScript. The
-TypeScript one means in-browser boot-proof verification is largely solved rather than a COSE
-reimplementation.
-
-**Do not have the app mint its own attestation document.** An earlier version of this repo added an
-`/attestation` endpoint calling the Nitro Secure Module directly. That is the wrong mechanism: the
-boot proof already exists and already binds the ephemeral key, and an enclave vouching for itself
-proves nothing regardless. It was reverted.
+[`proof.ts`](https://github.com/tkhq/sdk/tree/main/packages/crypto/src/proof.ts) in TypeScript. 
 
 ## Running locally
 
@@ -287,17 +280,16 @@ cd frontend && TVC_APP_URL=https://app-<APP_ID>.turnkey.cloud ./build.sh
 key that is *not* attested. Local runs check routing and verification logic. Only a deployed enclave
 demonstrates the attestation, and even there the boot proof is not checked.
 
-Never enable debug mode on an app you intend to show. It zeroes the attestation PCRs and permanently
+Never enable debug mode on a production app. It zeroes the attestation PCRs and permanently
 marks the app's quorum key insecure, and neither can be undone by a later non-debug deployment. Use
-it only on an app you intend to throw away.
+it only on a development app.
 
 ## Deploying
 
 The deploy config pins an image digest and the SHA-256 of the binary inside it. Only a reproducible
 StageX build produces those, so every deployment goes through CI.
 
-Production runs in the Solutions org and dev in Connor Dev, so `tvc login` has to point at the right
-one before any command. `tvc-configs/` holds a config pair per environment, and
+`tvc login` should be run first and configured to your org. `tvc-configs/` holds a config pair per environment, and
 `tvc-configs/README.md` has the identifiers.
 
 ```sh
@@ -324,7 +316,7 @@ The app URL is stable at `https://app-<APP_ID>.turnkey.cloud` on production and
 Delete the superseded deployment once the new one serves traffic, otherwise it is ambiguous which
 build answered a request.
 
-Worth knowing:
+**Notes:**
 
 1. A newly created `ghcr.io/tkhq/dlc-verify` package is **private** and the enclave cannot pull it.
    Make it public or pass `--pivot-pull-secret`.
