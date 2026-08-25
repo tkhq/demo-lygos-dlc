@@ -10,7 +10,7 @@ Two environments, each with its own org, app, and config files.
 | --- | --- | --- |
 | Config | `app.json`, `deploy.json` | `app.dev.json`, `deploy.dev.json` |
 | API | `https://api.turnkey.com` | `https://api.dev.turnkey.engineering` |
-| App URL | `https://app-<APP_ID>.turnkey.cloud` | `https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering` |
+| App URL | `https://app-<APP_ID>.app.turnkey.cloud` | `https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering` |
 | Debug mode | Disabled | Disabled |
 | Purpose | What customers see | Where changes get tried first |
 

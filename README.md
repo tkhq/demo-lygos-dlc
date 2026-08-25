@@ -273,7 +273,7 @@ Then open `frontend/index.html`. It points at `http://127.0.0.1:44020` by defaul
 elsewhere:
 
 ```sh
-cd frontend && TVC_APP_URL=https://app-<APP_ID>.turnkey.cloud ./build.sh
+cd frontend && TVC_APP_URL=https://app-<APP_ID>.app.turnkey.cloud ./build.sh
 ```
 
 `make run` generates throwaway keys in `/tmp/tvc-template-local-enclave`, so proofs verify against a
@@ -316,7 +316,7 @@ URL** and **Expected Executable Digest** from its summary.
 ENV=prod ./tvc-configs/deploy-latest.sh
 ```
 
-The app URL is stable at `https://app-<APP_ID>.turnkey.cloud` on production and
+The app URL is stable at `https://app-<APP_ID>.app.turnkey.cloud` on production and
 `https://app-<APP_ID>.apps.tvc-dev.turnkey.engineering` on dev, so only the deployment changes.
 Delete the superseded deployment once the new one serves traffic, otherwise it is ambiguous which
 build answered a request.
