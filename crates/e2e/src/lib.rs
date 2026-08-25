@@ -97,10 +97,10 @@ impl Builder {
 
     /// Execute `test`.
     ///
-    /// Spawns the `helloworld` binary, waits for it to bind, then runs
+    /// Spawns the `dlc-verify` binary, waits for it to bind, then runs
     /// the provided test function with a [`TestArgs`] containing the base URL.
     ///
-    /// Note this test env builder relies on the `helloworld` binary already
+    /// Note this test env builder relies on the `dlc-verify` binary already
     /// being built and existing in the target directory. Run `cargo build`
     /// from the workspace root before running integration tests.
     ///
@@ -115,7 +115,7 @@ impl Builder {
         let host_port =
             find_free_port().expect("failed to find a free port after maximum search attempts");
 
-        let server_binary = assert_cmd::cargo::cargo_bin("helloworld");
+        let server_binary = assert_cmd::cargo::cargo_bin("dlc-verify");
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let ephemeral_key_path = temp_dir.path().join("qos.ephemeral.key");
         let quorum_key_path = temp_dir.path().join("qos.quorum.key");
@@ -138,7 +138,7 @@ impl Builder {
             .arg("--quorum-file")
             .arg(&quorum_key_path)
             .spawn()
-            .expect("failed to spawn helloworld binary")
+            .expect("failed to spawn dlc-verify binary")
             .into();
 
         wait_until_port_is_bound(host_port);

@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lygos DLC Verification in a TEE</title>
+  <script src="config.js"></script>
+  <script src="presets.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --void: #0f0f0f; --surface: #0d0d0d; --surface-2: #141414;
+      --white: #fff; --text: #e0e0e0; --text-dim: #a0a0a0; --text-faint: #555;
+      --cyan: #00ffff; --cyan-08: rgba(0,255,255,.08); --cyan-04: rgba(0,255,255,.04);
+      --border: rgba(255,255,255,.14); --border-dim: rgba(255,255,255,.08);
+      --red: #ff4444; --red-08: rgba(255,68,68,.08); --red-20: rgba(255,68,68,.2);
+      --green: #4dff88; --green-08: rgba(77,255,136,.08); --green-30: rgba(77,255,136,.3);
+      --yellow: #ffd060; --yellow-04: rgba(255,200,0,.04); --yellow-15: rgba(255,200,0,.15);
+      --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      --sans: system-ui, -apple-system, sans-serif;
+    }
+    body { background: var(--void); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.6; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+    .hero { padding: 56px 40px 24px; max-width: 1000px; margin: 0 auto; text-align: center; }
+    .overline { font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cyan); margin-bottom: 16px; }
+    .hero h1 { font-size: clamp(26px,4.6vw,46px); font-weight: 600; line-height: 1.12; color: var(--white); margin-bottom: 16px; }
+    .hero p { font-size: 16px; line-height: 1.7; color: var(--text-dim); max-width: 760px; margin: 0 auto; }
+    .hero p strong { color: var(--text); font-weight: 500; }
+
+    .disclaimer { max-width: 1000px; margin: 0 auto 26px; background: var(--yellow-04); border: 1px solid var(--yellow-15); border-radius: 8px; padding: 16px 20px; }
+    .disclaimer-title { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--yellow); margin-bottom: 8px; }
+    .disclaimer p { font-size: 13.5px; color: var(--text-dim); line-height: 1.6; margin-bottom: 8px; }
+    .disclaimer p:last-child { margin-bottom: 0; }
+    .disclaimer strong { color: var(--text); font-weight: 500; }
+
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 0 40px 80px; }
+    .error-bar { display: none; margin-bottom: 20px; background: var(--red-08); border: 1px solid var(--red-20); border-radius: 6px; padding: 12px 16px; font-family: var(--mono); font-size: 13px; color: var(--red); }
+
+    /* use-case chooser */
+    .usecases { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+    .usecase { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; cursor: pointer; text-align: left; color: var(--text); font-family: var(--sans); transition: border-color .15s, background .15s; }
+    .usecase:hover { border-color: var(--text-faint); }
+    .usecase.active { border-color: var(--cyan); background: var(--cyan-04); }
+    .usecase-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); margin-bottom: 8px; }
+    .usecase.active .usecase-tag { color: var(--cyan); }
+    .usecase-name { font-size: 17px; font-weight: 600; color: var(--white); margin-bottom: 6px; }
+    .usecase-desc { font-size: 13px; color: var(--text-dim); line-height: 1.55; }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 22px; }
+    .panel-header { padding: 20px 26px 16px; border-bottom: 1px solid var(--border-dim); }
+    .panel-name { font-size: 19px; font-weight: 600; color: var(--cyan); margin-bottom: 5px; }
+    .panel-desc { font-size: 14px; color: var(--text-dim); line-height: 1.55; }
+    .panel-body { padding: 20px 26px; }
+
+    label.fl { display: block; font-size: 12px; font-weight: 500; color: var(--text-dim); margin-bottom: 5px; }
+    select, input[type=text], input[type=number], textarea {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-family: var(--mono); font-size: 13px; padding: 9px 11px; margin-bottom: 14px;
+    }
+    select:focus, input:focus, textarea:focus { outline: none; border-color: var(--cyan); }
+    textarea { resize: vertical; min-height: 48px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+    details.adv summary { cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--text-faint); margin-bottom: 12px; }
+    details.adv summary:hover { color: var(--text-dim); }
+
+    .subhead { display: flex; align-items: center; gap: 12px; margin: 20px 0 12px; }
+    .subhead-label { font-size: 14px; font-weight: 600; color: var(--white); white-space: nowrap; }
+    .subhead-line { flex: 1; height: 1px; background: var(--border-dim); }
+
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
+    .btn { border: none; border-radius: 6px; font-family: var(--sans); font-size: 14px; font-weight: 600; padding: 11px 22px; cursor: pointer; }
+    .btn-primary { background: var(--cyan); color: #0a0a0a; }
+    .btn-primary:hover { opacity: .88; }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .btn-ghost { background: transparent; border: 1px solid var(--yellow-15); color: var(--yellow); font-weight: 500; }
+    .btn-ghost:hover { border-color: var(--yellow); }
+
+    .verdict { border-radius: 8px; padding: 18px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; }
+    .verdict.pass { background: var(--green-08); border: 1px solid var(--green-30); }
+    .verdict.fail { background: var(--red-08); border: 1px solid var(--red-20); }
+    .verdict-icon { font-size: 28px; line-height: 1; }
+    .verdict-main { font-size: 18px; font-weight: 700; }
+    .verdict.pass .verdict-main { color: var(--green); }
+    .verdict.fail .verdict-main { color: var(--red); }
+    .verdict-sub { font-family: var(--mono); font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+
+    table.checks { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.checks td { padding: 8px 10px; border-bottom: 1px solid var(--border-dim); vertical-align: top; }
+    table.checks tr.req-fail { background: var(--red-08); }
+    .badge { font-family: var(--mono); font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 3px; white-space: nowrap; letter-spacing: .5px; }
+    .badge.pass { background: var(--green-08); color: var(--green); border: 1px solid var(--green-30); }
+    .badge.fail { background: var(--red-08); color: var(--red); border: 1px solid var(--red-20); }
+    .badge.skip { background: rgba(255,255,255,.04); color: var(--text-faint); border: 1px solid var(--border-dim); }
+    .badge.unk { background: var(--yellow-04); color: var(--yellow); border: 1px solid var(--yellow-15); }
+    .check-label { color: var(--text); }
+    .check-vals { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); margin-top: 3px; word-break: break-all; }
+    .check-vals .exp { color: var(--text-faint); }
+    .check-detail { font-size: 11.5px; color: var(--text-faint); margin-top: 3px; font-style: italic; }
+    .sev { font-family: var(--mono); font-size: 10px; color: var(--text-faint); }
+
+    .kv { display: flex; gap: 14px; padding: 6px 0; border-bottom: 1px solid var(--border-dim); }
+    .kv-k { font-size: 13px; color: var(--text); min-width: 220px; flex-shrink: 0; }
+    .kv-v { font-family: var(--mono); font-size: 12.5px; color: var(--text-dim); word-break: break-all; }
+    .kv-v.hl { color: var(--cyan); }
+    .kv-v.ok { color: var(--green); }
+    .kv-v.bad { color: var(--red); }
+
+    .loading { padding: 36px 0; text-align: center; font-family: var(--mono); font-size: 14px; color: var(--text-dim); animation: pulse 1.1s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .callout { margin-top: 12px; background: var(--cyan-04); border: 1px solid rgba(0,255,255,.12); border-radius: 6px; padding: 12px 16px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+    .callout strong { color: var(--cyan); font-weight: 500; }
+    .callout code { font-family: var(--mono); font-size: 12px; color: var(--text); }
+    .callout.warn { background: var(--yellow-04); border-color: var(--yellow-15); }
+    .callout.warn strong { color: var(--yellow); }
+
+    .json-block { background: var(--surface-2); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); white-space: pre; overflow-x: auto; line-height: 1.6; max-height: 320px; overflow-y: auto; }
+    details.raw summary { cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--text-faint); margin: 16px 0 9px; }
+    details.raw summary:hover { color: var(--text-dim); }
+
+    #results { display: none; }
+    .uc-only { display: none; }
+
+    @media (max-width: 720px) {
+      .hero { padding: 40px 20px 20px; }
+      .wrap { padding-left: 20px; padding-right: 20px; }
+      .usecases, .grid2 { grid-template-columns: 1fr; }
+      .panel-header, .panel-body { padding: 16px 18px; }
+      .kv { flex-direction: column; gap: 2px; }
+      .kv-k { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="overline">Turnkey Verifiable Cloud / Lygos</div>
+  <h1>Verifying a Bitcoin loan inside an enclave</h1>
+  <p>A Rust app in a <strong>Turnkey Verifiable Cloud</strong> enclave decodes a Lygos DLC, checks every signature, confirms the contract encodes <strong>the terms you agreed to</strong>, and proves the collateral is locked on Bitcoin. It signs the verdict with the enclave's own key.</p>
+</div>
+
+<div class="wrap">
+  <div class="error-bar" id="error-bar"></div>
+
+  <div class="usecases">
+    <button class="usecase active" id="uc-lender" data-profile="institutional_lender">
+      <div class="usecase-tag">Use case 1</div>
+      <div class="usecase-name">Institutional lender</div>
+      <div class="usecase-desc">Before advancing funds, prove the DLC is cryptographically sound <em>and</em> encodes the agreed keys, addresses, payouts and dates. Supply a collateral transaction to confirm the borrower's Bitcoin is locked, or leave it out to review terms before any is posted.</div>
+    </button>
+    <button class="usecase" id="uc-midnight" data-profile="morpho_midnight">
+      <div class="usecase-tag">Use case 2</div>
+      <div class="usecase-name">Morpho Midnight</div>
+      <div class="usecase-desc">Same verification, plus proof the Bitcoin collateral is funded and confirmed. Produces the signed attestation the Midnight contracts require before minting a collateral representation.</div>
+    </button>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-name" id="input-title">Loan contract and expected terms</div>
+      <div class="panel-desc" id="input-desc"></div>
+    </div>
+    <div class="panel-body">
+      <label class="fl" for="preset">Sample contract</label>
+      <select id="preset"></select>
+      <div class="callout" id="preset-note"></div>
+
+      <div class="subhead"><span class="subhead-label">Expected terms</span><div class="subhead-line"></div></div>
+      <div class="callout">Anything left blank is reported as <code>not checked</code>, which is deliberately distinct from <code>passed</code>, so an expectation you never stated can never be mistaken for one that was satisfied.</div>
+
+      <div class="grid2" style="margin-top:14px">
+        <div><label class="fl" for="t-lender">Lender funding key</label><input type="text" id="t-lender" /></div>
+        <div><label class="fl" for="t-borrower">Borrower funding key</label><input type="text" id="t-borrower" /></div>
+        <div><label class="fl" for="t-oracle">Oracle public key</label><input type="text" id="t-oracle" /></div>
+        <div><label class="fl" for="t-eventid">Oracle event id</label><input type="text" id="t-eventid" /></div>
+        <div><label class="fl" for="t-collateral">Total collateral (sat)</label><input type="number" id="t-collateral" /></div>
+        <div><label class="fl" for="t-feerate">Fee rate (sat/vB)</label><input type="number" id="t-feerate" /></div>
+        <div><label class="fl" for="t-repay-addr">Repayment destination</label><input type="text" id="t-repay-addr" /></div>
+        <div><label class="fl" for="t-repay-sats">Repayment amount (sat)</label><input type="number" id="t-repay-sats" /></div>
+        <div><label class="fl" for="t-liq-addr">Liquidation destination</label><input type="text" id="t-liq-addr" /></div>
+        <div><label class="fl" for="t-refund-addr">Refund destination</label><input type="text" id="t-refund-addr" /></div>
+        <div><label class="fl" for="t-refund-lt">Refund locktime</label><input type="number" id="t-refund-lt" /></div>
+        <div><label class="fl" for="t-cet-lt">Maturity (CET locktime)</label><input type="number" id="t-cet-lt" /></div>
+      </div>
+
+      <div class="subhead"><span class="subhead-label">Loan parameters</span><div class="subhead-line"></div></div>
+      <div class="grid2">
+        <div><label class="fl" for="t-loanid">Loan id</label><input type="text" id="t-loanid" /></div>
+        <div><label class="fl" for="t-principal">Principal</label><input type="text" id="t-principal" /></div>
+        <div><label class="fl" for="t-repayamt">Repayment amount</label><input type="text" id="t-repayamt" /></div>
+        <div><label class="fl" for="t-liqprice">Liquidation price</label><input type="text" id="t-liqprice" /></div>
+      </div>
+      <div class="callout warn">These drive the <strong>event-id recomputation</strong>, which ties the DLC to the loan terms themselves. The derivation here is a <strong>documented placeholder, not Lygos's rule</strong>, so it reports no verdict. Changing any parameter still visibly changes the derived id, which is exactly why the real check is worth having. Use <em>Alter a loan term</em> below to see it.</div>
+
+      <!-- Both use cases: a lender advancing funds needs the collateral confirmed too. -->
+      <div>
+        <div class="subhead"><span class="subhead-label">Bitcoin collateral</span><div class="subhead-line"></div></div>
+        <div class="callout" id="collateral-note"></div>
+        <div class="grid2">
+          <div><label class="fl" for="txid">Collateral transaction id</label><input type="text" id="txid" /></div>
+          <div><label class="fl" for="btcnet">Bitcoin network</label>
+            <select id="btcnet"><option value="testnet">testnet</option><option value="mainnet">mainnet</option></select></div>
+        </div>
+      </div>
+
+      <!-- Midnight only -->
+      <div class="uc-only" id="only-midnight">
+        <div class="subhead"><span class="subhead-label">EVM-side terms</span><div class="subhead-line"></div></div>
+        <div class="grid2">
+          <div><label class="fl" for="e-position">Position</label><input type="text" id="e-position" /></div>
+          <div><label class="fl" for="e-collateral">Collateral to represent (sat)</label><input type="number" id="e-collateral" /></div>
+        </div>
+        <div class="callout warn"><strong>Attested as received, not verified.</strong> This service verifies the Bitcoin and DLC side. The EVM terms are carried into the signed payload so the Midnight side can bind to the same values, and the report says so rather than implying they were checked.</div>
+        <div class="callout">These sample contracts were never broadcast, so their own fund transaction cannot be looked up. The txid above is a real confirmed testnet transaction so the on-chain step genuinely runs. Clear it to make the enclave check the contract's own derived <code>fundTxid</code> instead.</div>
+      </div>
+
+      <details class="adv" style="margin-top:18px">
+        <summary>Show raw DLC messages</summary>
+        <label class="fl" for="offer">Offer hex</label><textarea id="offer"></textarea>
+        <label class="fl" for="accept">Accept hex</label><textarea id="accept"></textarea>
+        <label class="fl" for="sign">Sign hex (optional)</label><textarea id="sign"></textarea>
+        <label class="fl" for="network">Address network</label>
+        <select id="network"><option value="regtest">regtest</option><option value="testnet">testnet</option><option value="mainnet">mainnet</option></select>
+      </details>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="run">Verify in enclave &#8594;</button>
+        <button class="btn btn-ghost" id="run-badterm">Alter a loan term</button>
+        <button class="btn btn-ghost" id="run-badoracle">Use wrong oracle key</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="results">
+    <div class="panel-header">
+      <div class="panel-name" id="out-title">Verdict</div>
+      <div class="panel-desc" id="out-desc"></div>
+    </div>
+    <div class="panel-body" id="results-body"></div>
+  </div>
+</div>
+
+<script>
+const BASE_URL = (window.TVC_APP_URL || 'http://127.0.0.1:44020').replace(/\/$/, '');
+const PRESETS = window.DLC_PRESETS || [];
+// A real, confirmed Bitcoin testnet3 transaction, used to exercise the on-chain step.
+const DEMO_TXID = 'dcf70d60370559665cc45b66841a2aab6d755b1df38a823bbbc8d38dd05db03d';
+
+const COPY = {
+  institutional_lender: {
+    inputTitle: 'Loan contract, agreed terms, and collateral',
+    inputDesc: 'Lygos gives you the offer, accept and sign messages. You supply the terms you agreed to. The enclave confirms the contract encodes them and that the borrower\'s collateral is locked on Bitcoin, checking the chain itself so you are not taking anyone\'s word for it.',
+    outTitle: 'Decoded loan report',
+    outDesc: 'A pass/fail you can rely on before advancing funds, with every term checked against the contract and the collateral confirmed on chain.',
+    collateralNote: 'Leave this blank to review terms before the borrower has posted collateral. The report will then say the collateral was not checked rather than implying it passed.',
+  },
+  morpho_midnight: {
+    inputTitle: 'Loan contract, expected terms, and collateral',
+    inputDesc: 'The same verification, plus confirmation that the Bitcoin collateral is funded. The enclave queries Bitcoin itself over egress.',
+    outTitle: 'Signed attestation',
+    outDesc: 'What the Midnight contracts consume before minting a collateral representation: the verdict, the terms digest, and the enclave signature over both.',
+    collateralNote: 'Required: a collateral representation cannot be minted against collateral that is not confirmed on chain.',
+  },
+};
+
+let profile = 'institutional_lender';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const showErr = (m) => { $('error-bar').textContent = m; $('error-bar').style.display = 'block'; };
+const clearErr = () => { $('error-bar').style.display = 'none'; };
+
+function setProfile(next) {
+  profile = next;
+  $('uc-lender').classList.toggle('active', next === 'institutional_lender');
+  $('uc-midnight').classList.toggle('active', next === 'morpho_midnight');
+  $('only-midnight').style.display = next === 'morpho_midnight' ? 'block' : 'none';
+  const c = COPY[next];
+  $('collateral-note').textContent = c.collateralNote;
+  $('input-title').textContent = c.inputTitle;
+  $('input-desc').textContent = c.inputDesc;
+  $('out-title').textContent = c.outTitle;
+  $('out-desc').textContent = c.outDesc;
+  $('results').style.display = 'none';
+}
+
+function loadPreset(i) {
+  const p = PRESETS[i];
+  if (!p) return;
+  $('offer').value = p.offerHex || '';
+  $('accept').value = p.acceptHex || '';
+  $('sign').value = p.signHex || '';
+  $('network').value = p.network || 'regtest';
+  $('preset-note').innerHTML = esc(p.note || '');
+
+  const t = p.terms || {};
+  const set = (id, v) => { $(id).value = v ?? ''; };
+  set('t-lender', t.lenderPubkey); set('t-borrower', t.borrowerPubkey);
+  set('t-oracle', t.oraclePubkey); set('t-eventid', t.oracleEventId);
+  set('t-collateral', t.totalCollateralSats); set('t-feerate', t.feeRatePerVb);
+  set('t-repay-addr', t.repayment?.address); set('t-repay-sats', t.repayment?.sats);
+  set('t-liq-addr', t.liquidation?.address);
+  set('t-refund-addr', t.refund?.address); set('t-refund-lt', t.refund?.locktime);
+  set('t-cet-lt', t.cetLocktime);
+  const l = t.loanTerms || {};
+  set('t-loanid', l.loanId); set('t-principal', l.principal);
+  set('t-repayamt', l.repaymentAmount); set('t-liqprice', l.liquidationPrice);
+  // The expected outcomes are part of the preset but not exposed as a form field; they
+  // ride along in the request so the outcome check is meaningful.
+  $('preset').dataset.outcomes = JSON.stringify(t.outcomes || []);
+  set('e-position', 'morpho-midnight-42'); set('e-collateral', t.totalCollateralSats);
+}
+
+function init() {
+  $('preset').innerHTML = PRESETS.map((p,i) => `<option value="${i}">${esc(p.label)}</option>`).join('');
+  $('preset').addEventListener('change', (e) => loadPreset(Number(e.target.value)));
+  loadPreset(0);
+  $('txid').value = DEMO_TXID;
+  $('uc-lender').addEventListener('click', () => setProfile('institutional_lender'));
+  $('uc-midnight').addEventListener('click', () => setProfile('morpho_midnight'));
+  $('run').addEventListener('click', () => run({}));
+  $('run-badterm').addEventListener('click', () => run({ badTerm: true }));
+  $('run-badoracle').addEventListener('click', () => run({ badOracle: true }));
+  setProfile(profile);
+}
+
+const num = (id) => { const v = $(id).value.trim(); return v === '' ? undefined : Number(v); };
+const str = (id) => { const v = $(id).value.trim(); return v === '' ? undefined : v; };
+
+function buildRequest(mutate) {
+  const expected = {
+    lenderPubkey: str('t-lender'),
+    borrowerPubkey: str('t-borrower'),
+    oraclePubkey: mutate.badOracle ? 'ff'.repeat(32) : str('t-oracle'),
+    oracleEventId: str('t-eventid'),
+    totalCollateralSats: num('t-collateral'),
+    feeRatePerVb: num('t-feerate'),
+    repayment: { address: str('t-repay-addr'), sats: num('t-repay-sats') },
+    liquidation: { address: str('t-liq-addr') },
+    refund: { address: str('t-refund-addr'), locktime: num('t-refund-lt') },
+    cetLocktime: num('t-cet-lt'),
+    outcomes: JSON.parse($('preset').dataset.outcomes || '[]'),
+    loanTerms: {
+      loanId: str('t-loanid'), principal: str('t-principal'),
+      repaymentAmount: mutate.badTerm ? String((Number(str('t-repayamt')) || 0) + 1) : str('t-repayamt'),
+      maturityTimestamp: num('t-cet-lt'), collateralSats: num('t-collateral'),
+      liquidationPrice: str('t-liqprice'),
+    },
+  };
+  // Altering a loan term must also alter the maturity the lender expects, so the
+  // mismatch shows up as a real term failure and not only in the derived event id.
+  if (mutate.badTerm) expected.cetLocktime = (num('t-cet-lt') || 0) + 60;
+
+  const body = {
+    profile,
+    offerHex: str('offer'), acceptHex: str('accept'),
+    network: str('network'),
+    expected,
+  };
+  if (str('sign')) body.signHex = str('sign');
+  if (str('txid')) body.btcTxid = str('txid');
+  body.bitcoinNetwork = $('btcnet').value;
+  if (profile === 'morpho_midnight') {
+    expected.evm = { position: str('e-position'), collateralSats: num('e-collateral') };
+  }
+  return body;
+}
+
+/// Which endpoint to call. The chain is consulted whenever a collateral transaction is on
+/// offer, whichever use case is running. A lender advancing funds needs it as much as the
+/// minting side. Only a lender reviewing terms before collateral exists skips it.
+function endpointFor(profile, body) {
+  if (body.btcTxid) return '/dlc/verify_loan';
+  return profile === 'morpho_midnight' ? '/dlc/verify_loan' : '/dlc/verify';
+}
+
+async function run(mutate) {
+  clearErr();
+  $('results').style.display = 'block';
+  $('results-body').innerHTML = '<div class="loading">Verifying inside the enclave&#8230;</div>';
+  for (const b of ['run','run-badterm','run-badoracle']) $(b).disabled = true;
+
+  const body = buildRequest(mutate);
+  const endpoint = endpointFor(profile, body);
+  try {
+    const resp = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    await render(data, body, mutate);
+  } catch (err) {
+    showErr(`Request failed: ${err.message}. Is the enclave reachable at ${BASE_URL}?`);
+    $('results').style.display = 'none';
+  } finally {
+    for (const b of ['run','run-badterm','run-badoracle']) $(b).disabled = false;
+  }
+}
+
+/// Verify the enclave's P-256 signature over the payload it returned.
+///
+/// `qos_p256` publishes two concatenated uncompressed points, the encryption key first and
+/// the *signing* key second, and signs raw r||s, which is what WebCrypto expects.
+const hexToBytes = (hex) => new Uint8Array(hex.match(/../g).map((h) => parseInt(h, 16)));
+async function verifyProof(proof) {
+  try {
+    if (!proof || !proof.publicKey || !proof.signature) return null;
+    if (proof.publicKey.length !== 260 || proof.signature.length !== 128) return null;
+    const signingKey = proof.publicKey.slice(130);
+    if (!signingKey.startsWith('04')) return null;
+    const key = await crypto.subtle.importKey('raw', hexToBytes(signingKey),
+      { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key,
+      hexToBytes(proof.signature), new TextEncoder().encode(proof.payload));
+  } catch { return null; }
+}
+
+const BADGE = {
+  pass: ['pass','PASS'], fail: ['fail','FAIL'],
+  not_checked: ['skip','NOT CHECKED'], not_verifiable: ['unk','NO VERDICT'],
+};
+
+function checkRow(c) {
+  const [cls, text] = BADGE[c.status] || ['skip','?'];
+  const isReqFail = c.severity === 'required' && c.status !== 'pass';
+  const vals = (c.expected !== undefined || c.actual !== undefined)
+    ? `<div class="check-vals"><span class="exp">expected</span> ${esc(c.expected ?? 'n/a')} &nbsp;·&nbsp; <span class="exp">actual</span> ${esc(c.actual ?? 'n/a')}</div>` : '';
+  const detail = c.detail ? `<div class="check-detail">${esc(c.detail)}</div>` : '';
+  return `<tr class="${isReqFail ? 'req-fail' : ''}">
+    <td style="width:1%"><span class="badge ${cls}">${text}</span></td>
+    <td><div class="check-label">${esc(c.label)}</div>${vals}${detail}</td>
+    <td style="width:1%" class="sev">${c.severity === 'required' ? 'REQUIRED' : 'info'}</td>
+  </tr>`;
+}
+
+function kv(k, v, cls) { return `<div class="kv"><div class="kv-k">${esc(k)}</div><div class="kv-v ${cls||''}">${esc(v ?? 'n/a')}</div></div>`; }
+
+async function render(data, request, mutate) {
+  const pass = data.status === 'verified';
+  const d = data.dlc || {};
+  const b = data.bitcoin;
+  const proofOk = await verifyProof(data.proof);
+  const proofText = proofOk === null ? 'could not be checked in this browser'
+    : (proofOk ? 'verified in your browser' : 'DID NOT VERIFY');
+
+  const banner = `
+    <div class="verdict ${pass ? 'pass' : 'fail'}">
+      <div class="verdict-icon">${pass ? '&#9989;' : '&#10060;'}</div>
+      <div>
+        <div class="verdict-main">${pass
+          ? (profile === 'morpho_midnight' ? 'VERIFIED: attestation issued' : 'VERIFIED: terms match, funds may be advanced')
+          : 'FAILED: do not proceed'}</div>
+        <div class="verdict-sub">${esc(data.profileLabel)} &nbsp;·&nbsp; ${
+          (data.blockingChecks || []).length ? `blocked by: ${esc(data.blockingChecks.join(', '))}` : 'every required check passed'}</div>
+      </div>
+    </div>
+    ${mutate.badTerm ? '<div class="callout warn"><strong>Simulated:</strong> the repayment amount and maturity were altered from what the contract encodes. Note that the contract\'s signatures are still valid. It is a perfectly sound DLC for <em>different terms</em>, which is precisely what this check exists to catch.</div>' : ''}
+    ${mutate.badOracle ? '<div class="callout warn"><strong>Simulated:</strong> the expected oracle key was replaced. The contract remains cryptographically valid; only the identity of the oracle it trusts is wrong.</div>' : ''}
+  `;
+
+  // The verification a lending partner performs. Step 1 genuinely runs in this browser;
+  // steps 2-4 are the boot-proof half, shown as the steps they are rather than faked.
+  const chain = [
+    {
+      n: 1,
+      title: 'Verify the app proof signature',
+      state: proofOk ? 'live-pass' : (proofOk === false ? 'live-fail' : 'live-unknown'),
+      body: `This runs in your browser right now. The enclave signed the canonical JSON of the verdict with its ephemeral key; WebCrypto checks that signature over the exact bytes returned. Establishes that <strong>the holder of this key produced this verdict and nothing altered it</strong>.`,
+    },
+    {
+      n: 2,
+      title: 'Fetch the boot proof for this enclave',
+      state: 'todo',
+      body: `A boot proof is the AWS Nitro attestation document plus the signed QOS manifest, produced by the platform when the enclave boots. It states the enclave's PCR measurements and carries the ephemeral public key in its <code>public_key</code> field.`,
+    },
+    {
+      n: 3,
+      title: 'Confirm the boot proof binds this key',
+      state: 'todo',
+      body: `Check <code>bootProof.public_key</code> equals the <code>publicKey</code> in the app proof above. <strong>This is the join</strong>: without it the signature is just a signature, and with it the verdict is tied to a specific attested enclave.`,
+    },
+    {
+      n: 4,
+      title: 'Check the measurements are the code you approved',
+      state: 'todo',
+      body: `Verify the document chains to the AWS Nitro root, then compare its PCRs and the manifest's application digest against values you hold independently. Taking the expected values from the same server that supplied the document would prove only that <em>some</em> enclave is running <em>something</em>.`,
+    },
+  ];
+
+  const stateBadge = {
+    'live-pass': ['pass', 'VERIFIED HERE'],
+    'live-fail': ['fail', 'FAILED HERE'],
+    'live-unknown': ['unk', 'NOT CHECKED'],
+    'todo': ['skip', 'NOT IN THIS DEMO'],
+  };
+
+  const attestation = `
+    <div class="subhead"><span class="subhead-label">How your lending partner verifies this</span><div class="subhead-line"></div></div>
+    <div class="callout">Turnkey's model is two proofs. An <strong>app proof</strong> is the enclave's signature over this verdict. A <strong>boot proof</strong> ties the signing key to an enclave whose code you can check. The partner needs both. This demo does step 1 for real and shows the rest.</div>
+    <table class="checks" style="margin-top:12px">
+      ${chain.map((s) => {
+        const [cls, text] = stateBadge[s.state];
+        return `<tr>
+          <td style="width:1%"><span class="badge ${cls}">${text}</span></td>
+          <td><div class="check-label"><strong>${s.n}. ${esc(s.title)}</strong></div>
+              <div class="check-detail" style="font-style:normal">${s.body}</div></td>
+        </tr>`;
+      }).join('')}
+    </table>
+    ${kv('App proof signature', proofText, proofOk ? 'ok' : (proofOk === false ? 'bad' : ''))}
+    ${kv('Enclave public key (bind to boot proof)', (data.proof||{}).publicKey)}
+    ${kv('Terms digest', data.termsDigest, 'hl')}
+    ${profile === 'morpho_midnight'
+      ? '<div class="callout">The <code>termsDigest</code> lets the Midnight contracts bind minting to exactly the terms verified here, rather than re-deriving them and hoping they agree.</div>'
+      : ''}
+    <div class="callout warn"><strong>Implementing steps 2 to 4:</strong> use Turnkey's verifiers rather than writing your own: <code>turnkey_proofs</code> in Rust, or <code>@turnkey/crypto</code>'s <code>proof.ts</code> in the browser. Until they are wired up, read the check above as <em>signature integrity</em>, not as attestation.</div>
+  `;
+
+  const contract = `
+    <div class="subhead"><span class="subhead-label">Decoded contract</span><div class="subhead-line"></div></div>
+    ${kv('Contract type', d.contractType, 'hl')}
+    ${kv('Total collateral', d.totalCollateral != null ? `${d.totalCollateral} sat` : null, 'hl')}
+    ${kv('Funding address (2-of-2)', d.fundingAddress)}
+    ${kv('Fund transaction id (derived)', d.fundTxid)}
+    ${kv('Contract id', d.contractId)}
+    ${kv('Oracle event', d.oracleEventId)}
+    ${kv('Repayment / refund destination', d.offererPayoutAddress)}
+    ${kv('Liquidation destination', d.accepterPayoutAddress)}
+    ${kv('Adaptor signatures', d.adaptorTotalCount ? `${d.adaptorValidCount} of ${d.adaptorTotalCount} valid` : null, d.adaptorSigsValid ? 'ok' : 'bad')}
+    <div class="subhead"><span class="subhead-label">Outcomes</span><div class="subhead-line"></div></div>
+    ${(d.outcomes||[]).map(o => kv(o.label, `borrower ${o.offererSats} sat · lender ${o.accepterSats} sat`)).join('')}
+  `;
+
+  const collateral = `
+    <div class="subhead"><span class="subhead-label">Bitcoin collateral</span><div class="subhead-line"></div></div>
+    ${b ? `
+      ${kv('Transaction', b.txid)}
+      ${kv('Network', b.network)}
+      ${kv('Confirmed', b.confirmed ? 'yes' : 'no', b.confirmed ? 'ok' : 'bad')}
+      ${kv('Block height', b.blockHeight)}
+      ${kv('Confirmations', b.confirmations != null ? `${b.confirmations} (minimum ${data.minConfirmations})` : null, 'hl')}
+    ` : `<div class="callout warn">No on-chain result. ${esc(data.bitcoinError ? JSON.stringify(data.bitcoinError) : 'No transaction was checked.')}</div>`}
+  `;
+
+  $('results-body').innerHTML = `
+    ${banner}
+    ${profile === 'morpho_midnight' ? attestation : ''}
+    <div class="subhead"><span class="subhead-label">Every check</span><div class="subhead-line"></div></div>
+    <table class="checks">${(data.checks||[]).map(checkRow).join('')}</table>
+    ${contract}
+    ${collateral}
+    ${profile === 'morpho_midnight' ? '' : attestation}
+    <details class="raw"><summary>Show the signed payload and the full exchange</summary>
+      <div class="json-block">${esc(JSON.stringify({ request, response: data }, null, 2))}</div>
+    </details>
+  `;
+}
+
+init();
+</script>
+</body>
+</html>

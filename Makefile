@@ -33,15 +33,15 @@ local-keys:
 
 .PHONY: run
 run: local-keys
-	cargo run --bin helloworld -- \
+	cargo run --bin dlc-verify -- \
 	--host $(HOST) \
 	--port $(PORT) \
 	--ephemeral-file $(EPHEMERAL_FILE) \
 	--quorum-file $(QUORUM_FILE)
 
-out/helloworld/index.json: \
-	Cargo.lock Cargo.toml rust-toolchain.toml $(shell find images/helloworld crates -type f ! -path '*/target/*')
-	$(call build,helloworld)
+out/dlc-verify/index.json: \
+	Cargo.lock Cargo.toml rust-toolchain.toml $(shell find images/dlc-verify crates -type f ! -path '*/target/*')
+	$(call build,dlc-verify)
 
 define build_context
 $$( \
@@ -59,7 +59,7 @@ endef
 define build
 	$(eval NAME := $(1))
 	$(eval TYPE := $(if $(2),$(2),dir))
-	$(eval REGISTRY := tkhq-tvc-helloworld)
+	$(eval REGISTRY := tkhq-tvc-dlc-verify)
 	$(eval PLATFORM := linux/amd64)
 	DOCKER_BUILDKIT=1 \
 	SOURCE_DATE_EPOCH=1 \
@@ -69,7 +69,7 @@ define build
 		--tag $(REGISTRY)/$(NAME) \
 		--progress=plain \
 		--platform=$(PLATFORM) \
-		--label "org.opencontainers.image.source=https://github.com/tkhq/tvc-helloworld" \
+		--label "org.opencontainers.image.source=https://github.com/tkhq/lygos-dlc-demo" \
 		$(if $(filter common,$(NAME)),,$(call build_context,$(1))) \
 		$(if $(filter 1,$(NOCACHE)),--no-cache) \
 		--output "\

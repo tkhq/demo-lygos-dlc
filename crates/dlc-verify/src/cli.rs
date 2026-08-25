@@ -1,9 +1,13 @@
-//! CLI argument parsing for the Hello World server
+//! CLI argument parsing.
 use clap::Parser;
 
-/// Hello World REST server
+/// DLC verification service
 #[derive(Parser, Debug)]
-#[command(name = "helloworld", version, about = "Hello World REST server")]
+#[command(
+    name = "dlc-verify",
+    version,
+    about = "DLC verification service for TVC"
+)]
 pub struct Cli {
     /// IP address to listen on
     #[arg(long, default_value = "127.0.0.1")]
