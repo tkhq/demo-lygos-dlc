@@ -61,7 +61,7 @@ Everything here is something a production system would need and this demo does n
 | Runs inside a TVC enclave | No | Yes |
 | Beyond contract verification | Nothing | Expected-term comparison, on-chain collateral lookup, structured check report, profiles, app proof |
 
-The enclave row forced the rest. A TVC deployment is a single binary whose SHA-256 is approved
+A TVC deployment is a single binary whose SHA-256 is approved
 before it can run, so a Node runtime plus an opaque `.node` file does not fit: the digest would
 cover a launcher script rather than the code doing the verifying.
 
