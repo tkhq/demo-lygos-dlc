@@ -15,8 +15,8 @@
 > Provided as is, without warranty of any kind, express or implied.
 
 A Rust service that runs inside a [Turnkey Verifiable Cloud](https://docs.turnkey.com) enclave and
-answers one question about a Lygos loan: **is this contract sound, and is its collateral actually
-locked on Bitcoin?**
+proves that a DLC contract is sound, and its collateral is
+locked on Bitcoin.**
 
 It verifies the contract the way Lygos's own [`dlc-verify`](https://github.com/LygosLabs/dlc-verify)
 does, covering message structure, the oracle's announcement signature, and every CET adaptor
