@@ -236,6 +236,8 @@ verbatim. `frontend/index.html` does this with WebCrypto in about fifteen lines.
 
 ### How the lending partner verifies: app proofs and boot proofs
 
+Full documentation: [Turnkey Verified](https://docs.turnkey.com/security/turnkey-verified)
+
 This is the part Lygos's lending partner implements, and the shape worth taking away from the demo.
 Turnkey's [model](https://docs.turnkey.com/security/turnkey-verified#app-proofs) is two proofs: an
 **app proof**, the enclave's P-256 signature over the verdict, which is what this service returns,
@@ -321,7 +323,7 @@ The app URL is stable at `https://app-<APP_ID>.app.turnkey.cloud` on production 
 Delete the superseded deployment once the new one serves traffic, otherwise it is ambiguous which
 build answered a request.
 
-**Notes:**
+**Troubleshooting:**
 
 1. A newly created `ghcr.io/tkhq/dlc-verify` package is **private** and the enclave cannot pull it.
    Make it public or pass `--pivot-pull-secret`.
