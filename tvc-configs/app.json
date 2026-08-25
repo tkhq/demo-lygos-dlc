@@ -9,7 +9,7 @@
     "newOperators": [
       {
         "name": "connor",
-        "publicKey": "0411b94078c79dac3421c2287cf0de906b44e1134fb0923c194da3e0bb2334c498f240a5ed823f93231b7242fc456ea326bfde2c57d8dbcb01e7d081bb25379ebe04088ee40dce60ef976953c683139127440b8cfea07ddc838e718690ac8a684b1b60b799ea5b52cf1fececbeb21750dc1fd9c60b6fa8215d6c2db945c2d5c39b09"
+        "publicKey": "REPLACE_FROM_LOCAL_ENV_PROD_OPERATOR_PUBKEY"
       }
     ],
     "existingOperatorIds": []

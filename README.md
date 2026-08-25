@@ -289,13 +289,18 @@ it only on a development app.
 The deploy config pins an image digest and the SHA-256 of the binary inside it. Only a reproducible
 StageX build produces those, so every deployment goes through CI.
 
-`tvc login` should be run first and configured to your org. `tvc-configs/` holds a config pair per environment, and
-`tvc-configs/README.md` has the identifiers.
+`tvc login` should be run first and configured to your org. `tvc-configs/` holds a config pair per
+environment.
+
+Org, app and operator identifiers are not committed. The configs carry placeholders, and the real
+values go in `tvc-configs/local.env`, which is gitignored. See `tvc-configs/README.md`.
 
 ```sh
 cargo install tvc --locked   # 0.14.0 or newer
+cp tvc-configs/local.env.example tvc-configs/local.env   # then fill it in
 tvc login                    # defaults to production, https://api.turnkey.com
-tvc app create --config-file tvc-configs/app.json   # record the app id and operator id
+ENV=prod ./tvc-configs/render-app-config.sh
+tvc app create --config-file tvc-configs/app.local.json  # record the ids it prints
 ```
 
 `enableEgress` and debug mode **cannot be added to an app later**, and `tvc-configs/app.json`
@@ -308,7 +313,7 @@ Then per pass: run `make lint test`, push, wait for the `stagex` workflow, and t
 URL** and **Expected Executable Digest** from its summary.
 
 ```sh
-OPERATOR_ID=<operator-id> ./tvc-configs/deploy-latest.sh
+ENV=prod ./tvc-configs/deploy-latest.sh
 ```
 
 The app URL is stable at `https://app-<APP_ID>.turnkey.cloud` on production and

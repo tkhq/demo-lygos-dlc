@@ -5,7 +5,7 @@ on:
     # `connor/dlc-verify-rust` is here so the demo can be published before the PR
     # merges; drop it once this is on main. Deploying from a non-default branch also
     # needs the `github-pages` environment to allow that branch, which it does not by
-    # default — see README.
+    # default. See README.
     branches: [main, connor/dlc-verify-rust]
     paths:
       - "frontend/**"
@@ -29,6 +29,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # config.js is gitignored so no enclave URL is committed. Set the repository
+      # variable TVC_APP_URL to the deployed app; without it the page falls back to
+      # localhost and the demo will not reach an enclave.
+      - name: Point the frontend at the enclave
+        env:
+          TVC_APP_URL: ${{ vars.TVC_APP_URL }}
+        run: |
+          if [ -z "$TVC_APP_URL" ]; then
+            echo "::warning::repository variable TVC_APP_URL is unset; page will target localhost"
+          fi
+          ./frontend/build.sh
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
