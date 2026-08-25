@@ -16,7 +16,7 @@
 
 A Rust service that runs inside a [Turnkey Verifiable Cloud](https://docs.turnkey.com) enclave and
 proves that a DLC contract is sound, and its collateral is
-locked on Bitcoin.**
+locked on Bitcoin.
 
 It verifies the contract the way Lygos's own [`dlc-verify`](https://github.com/LygosLabs/dlc-verify)
 does, covering message structure, the oracle's announcement signature, and every CET adaptor
@@ -25,7 +25,7 @@ combined verdict with the enclave's ephemeral key.
 
 ## Known gaps
 
-Everything here is something a production system would need and this demo does not do.
+A non-comprehensive list of what a production system would need, not included in this demo.
 
 1. **The attestation is not verified.** The service signs its verdict with the enclave's ephemeral
    key (an *app proof*) and the page checks that signature, but nothing pairs it with a *boot
