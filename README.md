@@ -32,40 +32,41 @@ Everything here is something a production system would need and this demo does n
    proof*, so nothing establishes that the signing key belongs to an enclave running this code. A
    passing signature check would look identical if it did not. See
    [How the lending partner verifies](#how-the-lending-partner-verifies-app-proofs-and-boot-proofs).
-2. **The quorum key is a shared bootstrap key.** Every app created from `tvc app init` in this org
-   carries the same pre-filled `quorumPublicKey`, with no per-app key from the share-set flow. This
-   service signs with the ephemeral key, but nothing depending on the quorum key is secure here.
-3. **Oracle event-id recomputation is a placeholder.** Lygos's derivation is not published and this
+2. **Oracle event-id recomputation is a placeholder.** Lygos's derivation is not published and this
    demo does not guess at it, so the check reports `not_verifiable`, never a pass or a fail. The
    exact-match check against a caller-supplied event id is real. Substituting their derivation is a
    one-function change in `event_id.rs`.
-4. **A passing `morpho_midnight` verdict does not prove the collateral belongs to the contract.**
+3. **A passing `morpho_midnight` verdict does not prove the collateral belongs to the contract.**
    `funding_output_match` reports whether the transaction pays the contract's 2-of-2 script for the
    right amount, but it is *informational*, so a verdict can read `verified` while pointing at an
    unrelated transaction. A production gate has to make it blocking. It is informational here
    because the sample contracts were never broadcast, so no real transaction can satisfy it.
-5. **One confirmation counts as settled.** `MIN_CONFIRMATIONS` is 1.
-6. **This is a reimplementation of `dlc-verify`, not that code running.** It agrees with DDK on
-   these fixtures, byte-for-byte on the funding transaction, but it can drift as Lygos changes
-   theirs.
-7. **CORS is fully permissive** so the GitHub Pages page can call the enclave. Every endpoint is a
-   read-only verification and the enclave holds no per-user state, but do not copy this posture.
-8. **The sample contracts were never broadcast.** The prefilled collateral transaction is a real but
+4. **One confirmation counts as settled.** `MIN_CONFIRMATIONS` is 1.
+5. **This is a reimplementation of `dlc-verify`.** It agrees with DDK on these fixtures,
+   byte-for-byte on the funding transaction, but it can drift as Lygos changes theirs.
+6. **CORS is fully permissive** so the GitHub Pages page can call the enclave. Every endpoint is a
+   read-only verification and the enclave holds no per-user state.
+7. **The sample contracts were never broadcast.** The prefilled collateral transaction is a real but
    unrelated testnet3 transaction, present so the on-chain step runs against something, which is why
    `fundingOutputMatch` is `false` on the happy path. Clearing the field makes the app fall back to
    the contract's own derived `fundTxid`, which correctly reports `TX_NOT_FOUND`.
 
-## Why this is a rewrite rather than a port
+## Differences from node dlc-verify
 
-`dlc-verify` is Node, and its cryptographic core is
-[DDK](https://www.npmjs.com/package/@bennyblader/ddk-ts), a prebuilt native addon. A TVC deployment
-is a single statically linked binary whose SHA-256 is approved before it can run, so a Node runtime
-plus an opaque `.node` file does not fit: the digest would cover a launcher script rather than the
-code doing the verifying, which is the entire point of the attestation.
+| | [`dlc-verify`](https://github.com/LygosLabs/dlc-verify) | This repo |
+| --- | --- | --- |
+| Language | TypeScript on Node | Rust, statically linked against musl |
+| Cryptographic core | [DDK](https://www.npmjs.com/package/@bennyblader/ddk-ts), a prebuilt native addon | [`rust-dlc`](https://github.com/p2pderivatives/rust-dlc) 0.8, plus the three pieces below |
+| Wire decoding | node-dlc | `dlc/codec.rs`, because `rust-dlc` cannot read node-dlc offers |
+| Runs inside a TVC enclave | No | Yes |
+| Beyond contract verification | Nothing | Expected-term comparison, on-chain collateral lookup, structured check report, profiles, app proof |
 
-So the verification is reimplemented in Rust on
-[`rust-dlc`](https://github.com/p2pderivatives/rust-dlc). Three things had to be worked out to match
-DDK, and each has a test that fails loudly if it regresses.
+The enclave row forced the rest. A TVC deployment is a single binary whose SHA-256 is approved
+before it can run, so a Node runtime plus an opaque `.node` file does not fit: the digest would
+cover a launcher script rather than the code doing the verifying.
+
+`rust-dlc` is not a drop-in replacement for DDK. Three things had to be worked out to make it
+produce the same answers, and each has a test that fails loudly if it regresses.
 
 **1. node-dlc writes a field `rust-dlc` does not read.** Lygos serializes with `node-dlc`, which
 appends an optional `dlc_input` to every funding input so a DLC can be funded by another DLC's
@@ -155,7 +156,7 @@ than as broken cryptography, because those are different problems.
 
 The event id ties the DLC to a *specific* loan, so it is checked twice: exact match against an id
 the caller expects, which is real, and recomputation from the loan parameters, which is the
-placeholder in gap 3. The recomputation still earns its place, because every loan parameter affects
+placeholder in gap 2. The recomputation still earns its place, because every loan parameter affects
 the derived id, so altering any term visibly changes it, which is the whole argument for the real
 check.
 
